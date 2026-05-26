@@ -1,0 +1,6 @@
+# Allow members of group "led" to control Pi onboard activity LED from Diagnostics.
+# Install: sudo cp scripts/99-qubibyte-led.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules && sudo udevadm trigger
+# Add user: sudo usermod -aG led $USER  (log out and back in)
+
+SUBSYSTEM=="leds", KERNEL=="ACT", MODE="0664", GROUP="led"
+SUBSYSTEM=="leds", KERNEL=="led0", MODE="0664", GROUP="led"

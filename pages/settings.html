@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Settings - Qubibyte HMI</title>
+    <script src="../js/theme-boot-inline.js"></script>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+
+<body class="page-body">
+    <!-- Background -->
+    <canvas id="bg-canvas" class="bg-canvas"></canvas>
+
+    <!-- Top Bar -->
+    <div class="top-bar subpage-top-bar">
+        <div class="top-bar-left">
+            <button class="back-btn" id="back-btn">
+                <span class="back-icon">◀</span>
+                <span>MENU</span>
+            </button>
+            <h1 class="page-title">SETTINGS</h1>
+        </div>
+        <div class="top-bar-right">
+            <div id="system-info" class="system-info"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="page-content settings-page">
+        <!-- Settings Navigation -->
+        <div class="settings-nav">
+            <button class="settings-nav-item active" data-section="display">
+                <span class="nav-icon">🖥️</span>
+                <span>Display</span>
+            </button>
+            <button class="settings-nav-item" data-section="system">
+                <span class="nav-icon">⚙️</span>
+                <span>System</span>
+            </button>
+            <button class="settings-nav-item" data-section="network">
+                <span class="nav-icon">📡</span>
+                <span>Network</span>
+            </button>
+            <button class="settings-nav-item" data-section="about">
+                <span class="nav-icon">ℹ️</span>
+                <span>About</span>
+            </button>
+        </div>
+
+        <!-- Settings Content -->
+        <div class="settings-content">
+            <!-- Display Section -->
+            <div class="settings-section active" id="section-display">
+                <h2>Display Settings</h2>
+
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Theme</span>
+                            <span class="setting-desc">Application color theme</span>
+                        </div>
+                        <div class="setting-control">
+                            <div class="theme-picker" id="theme-picker" role="group" aria-label="Theme">
+                                <button type="button" class="theme-option active" data-theme="dark">Dark</button>
+                                <button type="button" class="theme-option" data-theme="light">Light</button>
+                                <button type="button" class="theme-option" data-theme="midnight">Midnight</button>
+                                <button type="button" class="theme-option" data-theme="quantum">Quantum</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Fullscreen</span>
+                            <span class="setting-desc">Run in fullscreen mode</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="fullscreen-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Show Temperature</span>
+                            <span class="setting-desc">Display CPU temp in header</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="temp-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Section -->
+            <div class="settings-section" id="section-system">
+                <h2>System Settings</h2>
+
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Auto-Start</span>
+                            <span class="setting-desc">Launch on system boot</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autostart-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">GPU Acceleration</span>
+                            <span class="setting-desc">Required for 3D simulators (restart after change)</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="gpu-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Clear Cache</span>
+                            <span class="setting-desc">Remove temporary data</span>
+                        </div>
+                        <div class="setting-control">
+                            <button class="btn-warning" id="clear-cache">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Section -->
+            <div class="settings-section" id="section-network">
+                <h2>Network Settings</h2>
+
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Hardware IP</span>
+                            <span class="setting-desc">Quantum controller address</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="text" class="text-control" value="192.168.1.100" id="hw-ip">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Port</span>
+                            <span class="setting-desc">Connection port</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="number" class="text-control small" value="5000" id="hw-port">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Status</span>
+                            <span class="setting-desc">Connection state</span>
+                        </div>
+                        <div class="setting-control">
+                            <span class="status-badge disconnected">Disconnected</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Test</span>
+                            <span class="setting-desc">Verify connection</span>
+                        </div>
+                        <div class="setting-control">
+                            <button class="btn-primary" id="test-connection">Test</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- About Section -->
+            <div class="settings-section" id="section-about">
+                <h2>About</h2>
+
+                <div class="about-content">
+                    <div class="about-logo">
+                        <img src="../media/logo_white.png" alt="Qubibyte Logo" data-qubibyte-logo>
+                    </div>
+                    <div class="about-info">
+                        <h3>Qubibyte HMI</h3>
+                        <p class="version">Version 1.0.0</p>
+                        <p class="tagline">Everywhere, All At Once.</p>
+                        <div class="about-details">
+                            <p><strong>Platform:</strong> <span id="platform-info">Loading...</span></p>
+                            <p><strong>Electron:</strong> <span id="electron-version">Loading...</span></p>
+                        </div>
+                        <div class="about-links">
+                            <button class="btn-link" id="check-updates">Check Updates</button>
+                            <button class="btn-link" id="view-licenses">Licenses</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="about-footer">
+                    <p>© 2026 Qubibyte Technologies</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/settings.js"></script>
+</body>
+
+</html>

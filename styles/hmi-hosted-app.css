@@ -1,0 +1,39 @@
+/* HMI shell around hosted simulator / NMR apps (assets from QubibyteWebsite via qubibyte:// base) */
+.hmi-hosted-app {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a0f;
+}
+
+.hmi-hosted-app .hmi-app-viewport {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.hmi-hosted-app .app-container {
+    flex: 1;
+    min-height: 0;
+    height: auto !important;
+    max-height: 100%;
+}
+
+.hmi-hosted-app .main-content {
+    min-height: 0;
+}
+
+/* Hide website home navigation in app headers — HMI MENU is the back control */
+.hmi-hosted-app .header .title-section > a {
+    display: none;
+}
+
+.hmi-hosted-app .header .title-section img.logo {
+    display: block;
+    height: 36px;
+    width: auto;
+}

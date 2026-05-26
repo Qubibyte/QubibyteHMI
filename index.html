@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script src="js/theme-boot-inline.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Qubibyte HMI</title>
+    <script src="js/theme.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- Background Canvas (shared between screens) -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- Startup Screen -->
+    <div id="startup-screen" class="startup-screen">
+        <div class="startup-content">
+            <div id="logo-container" class="logo-container">
+                <img id="logo-img" src="media/logo_white.png" alt="Qubibyte Logo" data-qubibyte-logo>
+            </div>
+            <div class="startup-below">
+                <div class="slogan-container">
+                    <span class="slogan-word blue">EVERYWHERE,</span>
+                    <span class="slogan-word pink">ALL AT ONCE.</span>
+                </div>
+                <div id="prompt-label" class="prompt-text">TAP ANYWHERE TO BEGIN</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="main-app" class="main-app hidden">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <img src="media/logo_white.png" alt="Qubibyte" class="top-bar-logo" data-qubibyte-logo>
+            </div>
+            <div class="top-bar-right">
+                <div id="system-info" class="system-info"></div>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div class="main-menu">
+            <div class="menu-container">
+                <div class="menu-button" id="btn-circuit" data-page="circuit-builder">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/circuitbuilder.png" alt="Circuit Builder">
+                    </div>
+                    <div class="btn-label">CIRCUIT BUILDER</div>
+                </div>
+
+                <div class="menu-button" id="btn-calibration" data-page="calibration">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/calibration.png" alt="Calibration">
+                    </div>
+                    <div class="btn-label">CALIBRATION</div>
+                </div>
+
+                <div class="menu-button" id="btn-diagnostics" data-page="diagnostics">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/diagnostics.png" alt="Diagnostics">
+                    </div>
+                    <div class="btn-label">DIAGNOSTICS</div>
+                </div>
+
+                <div class="menu-button" id="btn-tutorial" data-page="tutorial">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/tutorial.png" alt="Tutorial">
+                    </div>
+                    <div class="btn-label">TUTORIAL</div>
+                </div>
+
+                <div class="menu-button" id="btn-nmr" data-page="nmr">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/nmr.png" alt="NMR Conductor">
+                    </div>
+                    <div class="btn-label">NMR CONDUCTOR</div>
+                </div>
+
+                <div class="menu-button" id="btn-website" data-page="website">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/website.png" alt="Website">
+                    </div>
+                    <div class="btn-label">WEBSITE</div>
+                </div>
+
+                <div class="menu-button" id="btn-settings" data-page="settings">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/settings.png" alt="Settings">
+                    </div>
+                    <div class="btn-label">SETTINGS</div>
+                </div>
+
+                <div class="menu-button exit" id="btn-exit">
+                    <div class="btn-glow"></div>
+                    <div class="btn-icon">
+                        <img src="media/exit.png" alt="Exit">
+                    </div>
+                    <div class="btn-label">EXIT</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main-menu.js"></script>
+</body>
+
+</html>

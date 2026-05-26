@@ -1,0 +1,10 @@
+{
+  "theme": "dark",
+  "fullscreen": false,
+  "showTemp": true,
+  "animationSpeed": "1",
+  "gpuAccel": true,
+  "autoStart": false,
+  "hwIp": "192.168.1.100",
+  "hwPort": "8080"
+}

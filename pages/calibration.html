@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Calibration - Qubibyte HMI</title>
+    <script src="../js/theme-boot-inline.js"></script>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+
+<body class="page-body">
+    <!-- Background -->
+    <canvas id="bg-canvas" class="bg-canvas"></canvas>
+
+    <!-- Top Bar -->
+    <div class="top-bar subpage-top-bar">
+        <div class="top-bar-left">
+            <button class="back-btn" id="back-btn">
+                <span class="back-icon">◀</span>
+                <span>MENU</span>
+            </button>
+            <h1 class="page-title">CALIBRATION</h1>
+        </div>
+        <div class="top-bar-right">
+            <div id="system-info" class="system-info"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="page-content calibration-page">
+        <!-- Calibration Status Panel -->
+        <div class="calib-panel status-panel">
+            <h2 class="panel-title">System Status</h2>
+            <div class="status-grid">
+                <div class="status-card good">
+                    <div class="status-indicator"></div>
+                    <div class="status-info">
+                        <span class="status-label">Qubit 0</span>
+                        <span class="status-value">Online</span>
+                    </div>
+                    <div class="status-metric">T1: 52.3 μs</div>
+                </div>
+                <div class="status-card good">
+                    <div class="status-indicator"></div>
+                    <div class="status-info">
+                        <span class="status-label">Qubit 1</span>
+                        <span class="status-value">Online</span>
+                    </div>
+                    <div class="status-metric">T1: 48.7 μs</div>
+                </div>
+                <div class="status-card warning">
+                    <div class="status-indicator"></div>
+                    <div class="status-info">
+                        <span class="status-label">Qubit 2</span>
+                        <span class="status-value">Degraded</span>
+                    </div>
+                    <div class="status-metric">T1: 31.2 μs</div>
+                </div>
+                <div class="status-card good">
+                    <div class="status-indicator"></div>
+                    <div class="status-info">
+                        <span class="status-label">Resonator</span>
+                        <span class="status-value">Stable</span>
+                    </div>
+                    <div class="status-metric">Q: 12,450</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calibration Controls -->
+        <div class="calib-panel controls-panel">
+            <h2 class="panel-title">Calibration Controls</h2>
+            <div class="control-sections">
+                <div class="control-section">
+                    <h3>Qubit Frequency</h3>
+                    <div class="control-group">
+                        <label>Q0 (GHz)</label>
+                        <div class="slider-control">
+                            <input type="range" min="4.5" max="5.5" step="0.001" value="5.123" id="q0-freq">
+                            <span class="slider-value" id="q0-freq-val">5.123</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Q1 (GHz)</label>
+                        <div class="slider-control">
+                            <input type="range" min="4.5" max="5.5" step="0.001" value="4.987" id="q1-freq">
+                            <span class="slider-value" id="q1-freq-val">4.987</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Q2 (GHz)</label>
+                        <div class="slider-control">
+                            <input type="range" min="4.5" max="5.5" step="0.001" value="5.256" id="q2-freq">
+                            <span class="slider-value" id="q2-freq-val">5.256</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>Pulse Settings</h3>
+                    <div class="control-group">
+                        <label>π Pulse (ns)</label>
+                        <div class="slider-control">
+                            <input type="range" min="10" max="100" step="1" value="32" id="pi-pulse">
+                            <span class="slider-value" id="pi-pulse-val">32</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Readout (μs)</label>
+                        <div class="slider-control">
+                            <input type="range" min="0.5" max="5" step="0.1" value="1.5" id="readout">
+                            <span class="slider-value" id="readout-val">1.5</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="calib-actions">
+                <button class="action-btn primary compact" id="run-calibration">
+                    ⟳ Auto-Calibrate
+                </button>
+                <button class="action-btn secondary compact" id="save-calibration">
+                    💾 Save
+                </button>
+                <button class="action-btn warning compact" id="reset-calibration">
+                    ↺ Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Calibration History -->
+        <div class="calib-panel history-panel">
+            <h2 class="panel-title">History</h2>
+            <div class="history-list">
+                <div class="history-item success">
+                    <div class="history-time">Today 2:32 PM</div>
+                    <div class="history-type">Full System</div>
+                    <div class="history-status">✓ Success</div>
+                </div>
+                <div class="history-item success">
+                    <div class="history-time">Today 9:15 AM</div>
+                    <div class="history-type">Frequency</div>
+                    <div class="history-status">✓ Success</div>
+                </div>
+                <div class="history-item warning">
+                    <div class="history-time">Yesterday</div>
+                    <div class="history-type">T1/T2</div>
+                    <div class="history-status">⚠ Partial</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/calibration.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: test -f QubibyteWebsite/index.html
+        shell: bash
+      - run: npm ci
+      - run: npm run build:win64
+      - run: npm run build:raspberry-pi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-and-pi-portable
+          path: |
+            release/windows/*.exe
+            release/raspberry-pi/*.tar.gz
+
+  build-pi-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: test -f QubibyteWebsite/index.html
+      - run: npm ci
+      - run: npm run build:raspberry-pi:deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raspberry-pi-deb
+          path: release/raspberry-pi/*.deb

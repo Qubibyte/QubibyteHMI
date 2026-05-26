@@ -1,0 +1,118 @@
+{
+  "name": "qubibyte-hmi",
+  "version": "1.0.0",
+  "description": "Qubibyte HMI - Human Machine Interface",
+  "main": "main.js",
+  "author": "Qubibyte",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "electron .",
+    "clean": "node scripts/clean-build.js",
+    "generate:pages": "node scripts/generate-hmi-app-pages.js",
+    "build": "node scripts/electron-build.js",
+    "build:win": "node scripts/electron-build.js --win --x64",
+    "build:win32": "node scripts/electron-build.js --win --ia32",
+    "build:win64": "node scripts/electron-build.js --win --x64",
+    "build:mac": "node scripts/electron-build.js --mac",
+    "build:linux": "node scripts/electron-build.js --linux --x64",
+    "build:linux-arm64": "node scripts/electron-build.js --linux tar.gz --arm64",
+    "build:raspberry-pi": "node scripts/electron-build.js --linux tar.gz --arm64",
+    "build:raspberry-pi:deb": "node scripts/electron-build.js --linux deb --arm64",
+    "build:raspberry-pi:all": "node scripts/electron-build.js --linux tar.gz deb --arm64",
+    "build:all": "npm run build:win64 && npm run build:raspberry-pi",
+    "build:windows-and-pi": "npm run build:win64 && npm run build:raspberry-pi"
+  },
+  "keywords": [
+    "electron",
+    "hmi",
+    "qubibyte"
+  ],
+  "devDependencies": {
+    "electron": "^42.2.0",
+    "electron-builder": "^26.11.0",
+    "rimraf": "^6.0.1"
+  },
+  "dependencies": {
+    "systeminformation": "^5.27.7"
+  },
+  "build": {
+    "appId": "com.qubibyte.hmi",
+    "productName": "Qubibyte HMI",
+    "publish": null,
+    "forceCodeSigning": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "styles.css",
+      "styles/**/*",
+      "index.html",
+      "js/**/*",
+      "js/qubibyte-protocol.js",
+      "config/**/*",
+      "pages/**/*",
+      "QubibyteWebsite/**/*",
+      "!QubibyteWebsite/.git/**/*",
+      "fonts/**/*",
+      "media/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "media/fav.png",
+      "signAndEditExecutable": false,
+      "signExecutable": false,
+      "executableName": "QubibyteHMI",
+      "artifactName": "QubibyteHMI-${version}.exe"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "media/fav.png"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "tar.gz",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "media/fav.png",
+      "category": "Utility",
+      "executableName": "QubibyteHMI",
+      "artifactName": "QubibyteHMI-${version}-arm64.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "Qubibyte HMI",
+          "Type": "Application",
+          "Categories": "Utility;"
+        }
+      },
+      "publish": null
+    },
+    "deb": {
+      "publish": null,
+      "maintainer": "Qubibyte",
+      "artifactName": "QubibyteHMI_${version}_arm64.${ext}",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
+    }
+  }
+}

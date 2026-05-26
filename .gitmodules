@@ -1,0 +1,3 @@
+[submodule "QubibyteWebsite"]
+	path = QubibyteWebsite
+	url = https://github.com/Qubibyte/QubibyteWebsite.git

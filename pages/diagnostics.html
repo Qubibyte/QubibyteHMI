@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Diagnostics - Qubibyte HMI</title>
+    <script src="../js/theme-boot-inline.js"></script>
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+
+<body class="page-body">
+    <!-- Background -->
+    <canvas id="bg-canvas" class="bg-canvas"></canvas>
+
+    <!-- Top Bar -->
+    <div class="top-bar subpage-top-bar">
+        <div class="top-bar-left">
+            <button class="back-btn" id="back-btn">
+                <span class="back-icon">◀</span>
+                <span>MENU</span>
+            </button>
+            <h1 class="page-title">SYSTEM DIAGNOSTICS</h1>
+        </div>
+        <div class="top-bar-right">
+            <div id="system-info" class="system-info"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="page-content diagnostics-page">
+        <!-- System Stats -->
+        <div class="diag-panel stats-panel">
+            <h2 class="panel-title">System Performance</h2>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-icon">🔧</span>
+                        <span class="stat-name">CPU</span>
+                    </div>
+                    <div class="stat-value" id="cpu-usage">--</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" id="cpu-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-icon">💾</span>
+                        <span class="stat-name">Memory</span>
+                    </div>
+                    <div class="stat-value" id="mem-usage">--</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" id="mem-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-icon">🌡️</span>
+                        <span class="stat-name">Temperature</span>
+                    </div>
+                    <div class="stat-value" id="temp-value">--</div>
+                    <div class="stat-bar temp">
+                        <div class="stat-bar-fill" id="temp-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-icon">⏱️</span>
+                        <span class="stat-name">Uptime</span>
+                    </div>
+                    <div class="stat-value" id="uptime-value">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Qubit Status -->
+        <div class="diag-panel qubit-panel">
+            <h2 class="panel-title">Qubit Coherence</h2>
+            <div class="qubit-status-grid">
+                <div class="qubit-status">
+                    <div class="qubit-header">
+                        <span class="qubit-name">Qubit 0</span>
+                        <span class="qubit-state good">Nominal</span>
+                    </div>
+                    <div class="coherence-metrics">
+                        <div class="metric">
+                            <span class="metric-label">T1</span>
+                            <span class="metric-value" id="q0-t1">52.3 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">T2</span>
+                            <span class="metric-value" id="q0-t2">38.1 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Fidelity</span>
+                            <span class="metric-value" id="q0-fidelity">99.7%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="qubit-status">
+                    <div class="qubit-header">
+                        <span class="qubit-name">Qubit 1</span>
+                        <span class="qubit-state good">Nominal</span>
+                    </div>
+                    <div class="coherence-metrics">
+                        <div class="metric">
+                            <span class="metric-label">T1</span>
+                            <span class="metric-value">48.7 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">T2</span>
+                            <span class="metric-value">35.2 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Fidelity</span>
+                            <span class="metric-value">99.5%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="qubit-status">
+                    <div class="qubit-header">
+                        <span class="qubit-name">Qubit 2</span>
+                        <span class="qubit-state warning">Degraded</span>
+                    </div>
+                    <div class="coherence-metrics">
+                        <div class="metric">
+                            <span class="metric-label">T1</span>
+                            <span class="metric-value">31.2 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">T2</span>
+                            <span class="metric-value">22.8 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Fidelity</span>
+                            <span class="metric-value">97.3%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onboard LED (Raspberry Pi only) -->
+        <div class="diag-panel led-panel hidden" id="pi-led-panel">
+            <h2 class="panel-title">Onboard LED</h2>
+            <p class="led-panel-hint">Green activity LED on the Pi board (Diagnostics only).</p>
+            <button type="button" class="diag-led-btn" id="pi-led-toggle" aria-pressed="false">
+                LED OFF
+            </button>
+        </div>
+
+        <!-- Logs -->
+        <div class="diag-panel logs-panel">
+            <h2 class="panel-title">System Logs</h2>
+            <div class="log-container" id="log-container">
+                <div class="log-entry info">[INFO] System initialized</div>
+                <div class="log-entry info">[INFO] Quantum processor detected</div>
+                <div class="log-entry success">[OK] Calibration data loaded</div>
+                <div class="log-entry success">[OK] All qubits online</div>
+                <div class="log-entry warning">[WARN] Qubit 2 T1 below threshold</div>
+                <div class="log-entry info">[INFO] Ready for operations</div>
+            </div>
+            <div class="log-actions">
+                <button class="action-btn secondary compact" id="clear-logs">Clear Logs</button>
+                <button class="action-btn primary compact" id="run-test">Run Self-Test</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/diagnostics.js"></script>
+</body>
+
+</html>

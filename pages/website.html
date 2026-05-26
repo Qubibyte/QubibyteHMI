@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script src="../js/theme-boot-inline.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Qubibyte Website - Qubibyte HMI</title>
+    <base href="qubibyte://local/hmi/pages/">
+    <script src="../js/theme.js"></script>
+    <link rel="stylesheet" href="../styles.css">
+</head>
+
+<body class="embed-body" data-qubibyte-path="index.html">
+    <div class="top-bar subpage-top-bar">
+        <div class="top-bar-left">
+            <button type="button" class="back-btn" id="embed-back">
+                <span class="back-icon">◀</span>
+                <span>MENU</span>
+            </button>
+            <h1 class="page-title">WEBSITE</h1>
+        </div>
+        <div class="top-bar-right">
+            <div id="system-info" class="system-info"></div>
+        </div>
+    </div>
+    <iframe id="embed-frame" class="embed-frame" title="Qubibyte Website"></iframe>
+    <script src="../js/embed-boot-inline.js"></script>
+    <script src="../js/embed-viewer.js"></script>
+</body>
+
+</html>
