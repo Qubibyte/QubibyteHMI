@@ -59,6 +59,8 @@
                     <div class="stat-header">
                         <span class="stat-icon">🌡️</span>
                         <span class="stat-name">Temperature</span>
+                        <button type="button" class="temp-unit-toggle" id="temp-unit-toggle"
+                            aria-label="Toggle temperature units" title="Toggle °C / °F">See °C</button>
                     </div>
                     <div class="stat-value" id="temp-value">--</div>
                     <div class="stat-bar temp">
@@ -72,6 +74,32 @@
                     </div>
                     <div class="stat-value" id="uptime-value">--</div>
                 </div>
+            </div>
+
+            <div class="stat-extra" aria-label="Additional telemetry">
+                <div class="stat-extra-item">
+                    <span class="stat-extra-label">RX</span>
+                    <span class="stat-extra-value" id="net-rx">--</span>
+                </div>
+                <div class="stat-extra-item">
+                    <span class="stat-extra-label">TX</span>
+                    <span class="stat-extra-value" id="net-tx">--</span>
+                </div>
+            </div>
+
+            <div class="stat-history">
+                <div class="stat-history-header">
+                    <span class="stat-history-title">History</span>
+                    <select class="stat-history-select" id="stat-history-select" aria-label="Select statistic">
+                        <option value="temperature">Temperature</option>
+                        <option value="cpu">CPU</option>
+                        <option value="memory">Memory</option>
+                        <option value="netRx">Network RX</option>
+                        <option value="netTx">Network TX</option>
+                    </select>
+                </div>
+                <canvas class="stat-history-canvas" id="stat-history-canvas" width="600" height="180"
+                    aria-label="Statistic history graph"></canvas>
             </div>
         </div>
 
@@ -139,16 +167,28 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Onboard LED (Raspberry Pi only) -->
-        <div class="diag-panel led-panel hidden" id="pi-led-panel">
-            <h2 class="panel-title">Onboard LED</h2>
-            <p class="led-panel-hint">Green activity LED on the Pi board (Diagnostics only).</p>
-            <button type="button" class="diag-led-btn" id="pi-led-toggle" aria-pressed="false">
-                LED OFF
-            </button>
+                <div class="qubit-status">
+                    <div class="qubit-header">
+                        <span class="qubit-name">Qubit 3</span>
+                        <span class="qubit-state good">Nominal</span>
+                    </div>
+                    <div class="coherence-metrics">
+                        <div class="metric">
+                            <span class="metric-label">T1</span>
+                            <span class="metric-value">46.8 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">T2</span>
+                            <span class="metric-value">33.9 μs</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Fidelity</span>
+                            <span class="metric-value">99.2%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Logs -->
@@ -164,7 +204,11 @@
             </div>
             <div class="log-actions">
                 <button class="action-btn secondary compact" id="clear-logs">Clear Logs</button>
-                <button class="action-btn primary compact" id="run-test">Run Self-Test</button>
+                <div class="log-actions-right">
+                    <button class="action-btn primary compact" id="run-test">Run Self-Test</button>
+                    <button type="button" class="action-btn secondary compact diag-led-btn" id="pi-led-toggle"
+                        aria-pressed="false">LED OFF</button>
+                </div>
             </div>
         </div>
     </div>

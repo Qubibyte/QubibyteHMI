@@ -65,50 +65,361 @@ function formatTime() {
 // MONITORING
 // ============================================
 
-let startTime = Date.now();
+const HISTORY_WINDOW_MS = 5 * 60 * 1000;
+const SAMPLE_MS = 2000;
+
+let tempUnit = 'F'; // default display
+let selectedSeries = 'temperature';
+const sessionStartMs = Date.now();
+
+/** @type {{ts:number, cpu:number|null, mem:number|null, tempC:number|null, rx:number|null, tx:number|null}[]} */
+let samples = [];
 
 function startMonitoring() {
+    setupTempUnitToggle();
+    setupHistoryControls();
     updateStats();
-    setInterval(updateStats, 2000);
+    setInterval(updateStats, SAMPLE_MS);
 }
 
-function updateStats() {
-    // Simulated CPU usage with realistic variation
-    const cpu = Math.round(15 + Math.random() * 25);
-    document.getElementById('cpu-usage').textContent = `${cpu}%`;
-    document.getElementById('cpu-bar').style.width = `${cpu}%`;
+function setupTempUnitToggle() {
+    const btn = document.getElementById('temp-unit-toggle');
+    if (!btn) return;
+    const saved = (() => {
+        try { return localStorage.getItem('diag-temp-unit'); } catch { return null; }
+    })();
+    if (saved === 'C' || saved === 'F') tempUnit = saved;
+    btn.textContent = tempUnit === 'F' ? 'See °C' : 'See °F';
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        tempUnit = tempUnit === 'F' ? 'C' : 'F';
+        btn.textContent = tempUnit === 'F' ? 'See °C' : 'See °F';
+        try { localStorage.setItem('diag-temp-unit', tempUnit); } catch { }
+        // repaint with last sample
+        paintLatest();
+    });
+}
 
-    // Simulated memory
-    const mem = Math.round(35 + Math.random() * 15);
-    document.getElementById('mem-usage').textContent = `${mem}%`;
-    document.getElementById('mem-bar').style.width = `${mem}%`;
+function setupHistoryControls() {
+    const sel = document.getElementById('stat-history-select');
+    if (!sel) return;
+    sel.value = selectedSeries;
+    sel.addEventListener('change', () => {
+        selectedSeries = sel.value;
+        renderHistoryGraph();
+    });
+}
 
-    // Temperature
-    const temp = Math.round(42 + Math.random() * 8);
-    document.getElementById('temp-value').textContent = `${temp}°C`;
-    document.getElementById('temp-bar').style.width = `${Math.min(temp, 100)}%`;
-    document.getElementById('temp-bar').style.background = temp > 70 ? 'var(--accent-red)' :
-        temp > 55 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+function clamp01(x) {
+    if (!Number.isFinite(x)) return 0;
+    return Math.max(0, Math.min(1, x));
+}
 
-    // Uptime
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const hours = Math.floor(uptime / 3600);
-    const mins = Math.floor((uptime % 3600) / 60);
-    const secs = uptime % 60;
-    document.getElementById('uptime-value').textContent =
-        `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+function cToF(c) { return (c * 9 / 5) + 32; }
+
+function formatBytesPerSec(bps) {
+    if (!Number.isFinite(bps) || bps < 0) return '--';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let v = bps;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatUptime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '--';
+    const s = Math.floor(seconds);
+    const hours = Math.floor(s / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function parseTempStringToF(str) {
+    if (typeof str !== 'string') return null;
+    const m = str.match(/(-?\d+(\.\d+)?)\s*°\s*F/i);
+    if (!m) return null;
+    const v = parseFloat(m[1]);
+    return Number.isFinite(v) ? v : null;
+}
+
+function generateSimulatedTelemetry() {
+    // Simulated values roughly in the same ranges as typical systems
+    const cpu = Math.round(10 + Math.random() * 40);
+    const mem = Math.round(25 + Math.random() * 35);
+    const tempC = Math.round(40 + Math.random() * 12);
+    const rx = Math.random() * 12000;
+    const tx = Math.random() * 8000;
+    return { cpuPercent: cpu, memoryPercent: mem, temperatureC: tempC, netRxBytesPerSec: rx, netTxBytesPerSec: tx, uptimeSeconds: (Date.now() / 1000) };
+}
+
+async function updateStats() {
+    const now = Date.now();
+    let info = null;
+
+    if (window.electronAPI?.getSystemInfo) {
+        try {
+            info = await window.electronAPI.getSystemInfo();
+        } catch {
+            info = null;
+        }
+    }
+
+    if (!info) info = {};
+
+    const simulated = generateSimulatedTelemetry();
+
+    const cpu = Number.isFinite(info.cpuPercent) ? info.cpuPercent : simulated.cpuPercent;
+    const mem = Number.isFinite(info.memoryPercent) ? info.memoryPercent : simulated.memoryPercent;
+
+    let tempC = Number.isFinite(info.temperatureC) ? info.temperatureC : null;
+    if (tempC === null && typeof info.temperature === 'string') {
+        const tempFParsed = parseTempStringToF(info.temperature);
+        if (Number.isFinite(tempFParsed)) tempC = (tempFParsed - 32) * 5 / 9;
+    }
+    if (tempC === null) tempC = simulated.temperatureC;
+
+    const rx = Number.isFinite(info.netRxBytesPerSec) ? info.netRxBytesPerSec : simulated.netRxBytesPerSec;
+    const tx = Number.isFinite(info.netTxBytesPerSec) ? info.netTxBytesPerSec : simulated.netTxBytesPerSec;
+    const uptimeSeconds = Number.isFinite(info.uptimeSeconds) ? info.uptimeSeconds : null;
+
+    samples.push({ ts: now, cpu, mem, tempC, rx, tx });
+    const cutoff = now - HISTORY_WINDOW_MS;
+    while (samples.length && samples[0].ts < cutoff) samples.shift();
+
+    paintLatest({ cpu, mem, tempC, rx, tx, uptimeSeconds });
+    renderHistoryGraph();
+}
+
+function paintLatest(override) {
+    const last = override || (samples.length ? samples[samples.length - 1] : null);
+    if (!last) return;
+
+    const cpu = last.cpu;
+    const mem = last.mem;
+    const tempC = last.tempC;
+    const rx = last.rx;
+    const tx = last.tx;
+
+    const cpuEl = document.getElementById('cpu-usage');
+    const cpuBar = document.getElementById('cpu-bar');
+    if (cpuEl && cpuBar && Number.isFinite(cpu)) {
+        cpuEl.textContent = `${Math.round(cpu)}%`;
+        cpuBar.style.width = `${clamp01(cpu / 100) * 100}%`;
+    }
+
+    const memEl = document.getElementById('mem-usage');
+    const memBar = document.getElementById('mem-bar');
+    if (memEl && memBar && Number.isFinite(mem)) {
+        memEl.textContent = `${Math.round(mem)}%`;
+        memBar.style.width = `${clamp01(mem / 100) * 100}%`;
+    }
+
+    const tempEl = document.getElementById('temp-value');
+    const tempBar = document.getElementById('temp-bar');
+    if (tempEl && tempBar && Number.isFinite(tempC)) {
+        const tempF = cToF(tempC);
+        const shown = tempUnit === 'C' ? `${tempC.toFixed(1)}°C` : `${tempF.toFixed(1)}°F`;
+        tempEl.textContent = shown;
+        tempBar.style.width = `${clamp01(tempC / 100) * 100}%`;
+        tempBar.style.background = tempC > 70 ? 'var(--accent-red)' :
+            tempC > 55 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+    }
+
+    const uptimeEl = document.getElementById('uptime-value');
+    if (uptimeEl) {
+        const fromIpc = override && Number.isFinite(override.uptimeSeconds) ? override.uptimeSeconds : null;
+        const fallback = (Date.now() - sessionStartMs) / 1000;
+        uptimeEl.textContent = formatUptime(fromIpc ?? fallback);
+    }
+
+    const rxEl = document.getElementById('net-rx');
+    if (rxEl) rxEl.textContent = formatBytesPerSec(rx);
+    const txEl = document.getElementById('net-tx');
+    if (txEl) txEl.textContent = formatBytesPerSec(tx);
+}
+
+function getSeriesConfig(key) {
+    switch (key) {
+        case 'cpu':
+            return { label: 'CPU (%)', unit: '%', get: (s) => s.cpu, min: 0, max: 100 };
+        case 'memory':
+            return { label: 'Memory (%)', unit: '%', get: (s) => s.mem, min: 0, max: 100 };
+        case 'temperature':
+        default:
+            return {
+                label: `Temperature (°${tempUnit})`,
+                unit: `°${tempUnit}`,
+                get: (s) => {
+                    if (!Number.isFinite(s.tempC)) return null;
+                    return tempUnit === 'C' ? s.tempC : cToF(s.tempC);
+                },
+                min: tempUnit === 'C' ? 0 : 32,
+                max: tempUnit === 'C' ? 100 : 212
+            };
+        case 'netRx':
+            return { label: 'Network RX (KB/s)', unit: 'KB/s', get: (s) => Number.isFinite(s.rx) ? s.rx / 1024 : null, min: 0, max: null };
+        case 'netTx':
+            return { label: 'Network TX (KB/s)', unit: 'KB/s', get: (s) => Number.isFinite(s.tx) ? s.tx / 1024 : null, min: 0, max: null };
+    }
+}
+
+function renderHistoryGraph() {
+    const canvas = document.getElementById('stat-history-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cfg = getSeriesConfig(selectedSeries);
+    const { label, get } = cfg;
+    const min = cfg.min;
+    let max = cfg.max;
+    if (!Number.isFinite(max)) {
+        let m = 0;
+        for (const s of samples) {
+            const v = get(s);
+            if (Number.isFinite(v)) m = Math.max(m, v);
+        }
+        max = m > 0 ? m * 1.15 : 1;
+    }
+
+    // Size canvas to CSS pixels (sharp on Pi/7")
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // Pull colors from CSS variables
+    const cs = getComputedStyle(document.documentElement);
+    const text = cs.getPropertyValue('--text-muted').trim() || '#94a3b8';
+    const border = cs.getPropertyValue('--border-color').trim() || 'rgba(255,255,255,0.12)';
+    const line = cs.getPropertyValue('--accent-cyan').trim() || '#06b6d4';
+    const bg = cs.getPropertyValue('--surface-overlay-subtle').trim() || 'rgba(255,255,255,0.04)';
+    const fill = cs.getPropertyValue('--accent-blue').trim() || '#0ea5e9';
+
+    // background
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    const padL = 44 * dpr, padR = 10 * dpr, padT = 18 * dpr, padB = 28 * dpr;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+    const now = Date.now();
+    const firstTs = samples.length ? samples[0].ts : now;
+    const visibleWindow = Math.min(HISTORY_WINDOW_MS, Math.max(30_000, now - firstTs));
+    const start = now - visibleWindow;
+
+    // axes
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + plotH);
+    ctx.lineTo(padL + plotW, padT + plotH);
+    ctx.stroke();
+
+    // y ticks
+    ctx.fillStyle = text;
+    ctx.font = `${Math.round(12 * dpr)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const yTicks = 3;
+    for (let i = 0; i <= yTicks; i++) {
+        const t = i / yTicks;
+        const y = padT + plotH - t * plotH;
+        const v = min + t * (max - min);
+        ctx.fillText(`${Math.round(v)}`, padL - (8 * dpr), y);
+        ctx.strokeStyle = border;
+        ctx.globalAlpha = 0.18;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL + plotW, y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
+    // title
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = text;
+    ctx.fillText(label, padL, 4 * dpr);
+
+    // line series
+    const points = [];
+    for (const s of samples) {
+        const v = get(s);
+        if (!Number.isFinite(v)) continue;
+        const x = padL + ((s.ts - start) / (visibleWindow)) * plotW;
+        const y = padT + (1 - clamp01((v - min) / (max - min))) * plotH;
+        points.push({ x, y });
+    }
+
+    if (points.length >= 1) {
+        // area fill
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, padT + plotH);
+        for (let i = 0; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        ctx.lineTo(points[points.length - 1].x, padT + plotH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // line
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        ctx.stroke();
+    }
+
+    // x axis labels (elapsed)
+    ctx.fillStyle = text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const xTicks = 3;
+    const formatMMSS = (ms) => {
+        const total = Math.max(0, Math.floor(ms / 1000));
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+    for (let i = 0; i <= xTicks; i++) {
+        const t = i / xTicks;
+        const x = padL + t * plotW;
+        const labelMs = t * visibleWindow;
+        ctx.fillText(i === xTicks ? 'now' : formatMMSS(labelMs), x, padT + plotH + (6 * dpr));
+    }
 }
 
 // ============================================
 // BUTTONS
 // ============================================
 
-function setupPiLedToggle() {
-    const panel = document.getElementById('pi-led-panel');
-    const btn = document.getElementById('pi-led-toggle');
-    if (!panel || !btn || !window.electronAPI?.isRaspberryPi) return;
+function showNotification(message, type = 'info') {
+    const notif = document.createElement('div');
+    notif.className = `notification ${type}`;
+    notif.textContent = message;
+    document.body.appendChild(notif);
 
-    panel.classList.remove('hidden');
+    setTimeout(() => notif.classList.add('show'), 10);
+    setTimeout(() => {
+        notif.classList.remove('show');
+        setTimeout(() => notif.remove(), 300);
+    }, 2500);
+}
+
+function setupPiLedToggle() {
+    const btn = document.getElementById('pi-led-toggle');
+    if (!btn) return;
 
     const paint = (on) => {
         btn.classList.toggle('led-on', on);
@@ -117,6 +428,7 @@ function setupPiLedToggle() {
     };
 
     const syncState = async () => {
+        if (!window.electronAPI?.getOnboardLedState) return;
         try {
             const state = await window.electronAPI.getOnboardLedState();
             if (state?.ok) paint(Boolean(state.on));
@@ -125,15 +437,33 @@ function setupPiLedToggle() {
         }
     };
 
-    syncState();
+    if (window.electronAPI?.isRaspberryPi) {
+        syncState();
+    }
 
     const handler = async (e) => {
         e.preventDefault();
+
+        if (!window.electronAPI?.toggleOnboardLed) {
+            showNotification('Onboard LED control is not available.', 'info');
+            return;
+        }
+
+        if (!window.electronAPI.isRaspberryPi) {
+            showNotification('Onboard LED is only available on Raspberry Pi hardware.', 'info');
+            return;
+        }
+
         try {
             const result = await window.electronAPI.toggleOnboardLed();
-            if (result?.ok) paint(Boolean(result.on));
+            if (result?.ok) {
+                paint(Boolean(result.on));
+            } else {
+                showNotification('Could not control onboard LED.', 'error');
+            }
         } catch (err) {
             console.error('LED toggle failed:', err);
+            showNotification('LED toggle failed.', 'error');
         }
     };
 

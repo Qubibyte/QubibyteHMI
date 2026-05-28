@@ -310,6 +310,13 @@ body {
     filter: drop-shadow(0 0 30px rgba(14, 165, 233, 0.3));
 }
 
+/* Hidden until startup animation runs (avoids full-size flash on first paint) */
+#logo-img {
+    opacity: 0;
+    transform: scale(0.5);
+    will-change: opacity, transform;
+}
+
 .startup-below {
     position: absolute;
     top: 52%;
@@ -444,10 +451,10 @@ body {
 
 .menu-container {
     display: grid;
-    grid-template-columns: repeat(4, minmax(175px, 220px));
-    gap: 28px;
-    padding: 28px 36px;
-    max-width: 980px;
+    grid-template-columns: repeat(4, minmax(195px, 245px));
+    gap: 31px;
+    padding: 31px 40px;
+    max-width: 1080px;
     width: 100%;
     justify-content: center;
     align-content: center;
@@ -455,11 +462,11 @@ body {
 
 .menu-button {
     width: 100%;
-    min-height: 210px;
+    min-height: 235px;
     aspect-ratio: 1;
     background: var(--menu-btn-bg);
     border: 2px solid var(--menu-btn-border);
-    border-radius: 18px;
+    border-radius: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -511,12 +518,12 @@ body {
 }
 
 .btn-icon {
-    width: 88px;
-    height: 88px;
+    width: 98px;
+    height: 98px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
 }
 
 .btn-icon img {
@@ -534,9 +541,9 @@ body {
 
 .btn-label {
     font-family: var(--font-display);
-    font-size: 19px;
+    font-size: 21px;
     font-weight: 700;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.65px;
     color: var(--text-primary);
     text-align: center;
     text-transform: uppercase;
@@ -1468,8 +1475,8 @@ body {
    ============================================ */
 .settings-page {
     display: grid;
-    grid-template-columns: 200px 1fr;
-    gap: 20px;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
 }
 
 .settings-nav {
@@ -1481,14 +1488,14 @@ body {
 .settings-nav-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
+    gap: 14px;
+    padding: 16px 20px;
     background: transparent;
     border: none;
     border-radius: 10px;
     color: var(--text-secondary);
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: 18px;
     cursor: pointer;
     transition: all var(--transition-speed) ease;
     text-align: left;
@@ -1506,14 +1513,14 @@ body {
 }
 
 .nav-icon {
-    font-size: 18px;
+    font-size: 22px;
 }
 
 .settings-content {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    padding: 30px;
+    padding: 32px 36px;
     overflow-y: auto;
 }
 
@@ -1527,8 +1534,8 @@ body {
 
 .settings-section h2 {
     font-family: var(--font-display);
-    font-size: 24px;
-    margin-bottom: 25px;
+    font-size: 28px;
+    margin-bottom: 28px;
 }
 
 .setting-group {
@@ -1541,7 +1548,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 18px 0;
+    padding: 20px 0;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -1552,12 +1559,12 @@ body {
 }
 
 .setting-label {
-    font-size: 15px;
+    font-size: 18px;
     color: var(--text-primary);
 }
 
 .setting-desc {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--text-muted);
 }
 
@@ -1567,11 +1574,24 @@ body {
     gap: 10px;
 }
 
+.settings-page .btn-primary,
+.settings-page .btn-secondary,
+.settings-page .btn-warning,
+.settings-page .btn-link {
+    font-size: 16px;
+    padding: 12px 20px;
+}
+
+.settings-page .btn-link {
+    padding: 8px 0;
+    font-size: 15px;
+}
+
 /* Toggle Switch */
 .toggle-switch {
     position: relative;
-    width: 50px;
-    height: 26px;
+    width: 56px;
+    height: 30px;
 }
 
 .toggle-switch input {
@@ -1595,10 +1615,10 @@ body {
 .toggle-slider::before {
     position: absolute;
     content: "";
-    height: 20px;
-    width: 20px;
-    left: 3px;
-    bottom: 3px;
+    height: 22px;
+    width: 22px;
+    left: 4px;
+    bottom: 4px;
     background: var(--toggle-knob);
     border-radius: 50%;
     transition: all var(--transition-speed) ease;
@@ -1609,19 +1629,19 @@ input:checked+.toggle-slider {
 }
 
 input:checked+.toggle-slider::before {
-    transform: translateX(24px);
+    transform: translateX(26px);
 }
 
 /* Select Control */
 .select-control {
-    padding: 10px 15px;
+    padding: 12px 16px;
     background-color: var(--input-bg);
     border: 1px solid var(--input-border);
     border-radius: 8px;
     color: var(--text-primary);
     font-family: var(--font-primary);
-    font-size: 14px;
-    min-width: 180px;
+    font-size: 16px;
+    min-width: 200px;
     cursor: pointer;
     color-scheme: var(--color-scheme);
     -webkit-appearance: none;
@@ -1650,11 +1670,11 @@ input:checked+.toggle-slider::before {
 }
 
 .theme-option {
-    padding: 10px 18px;
+    padding: 12px 20px;
     border-radius: 8px;
     border: 2px solid rgba(128, 128, 128, 0.45);
     font-family: var(--font-display);
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     letter-spacing: 0.5px;
     cursor: pointer;
@@ -1720,20 +1740,20 @@ input:checked+.toggle-slider::before {
 
 .range-value {
     font-family: monospace;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--accent-cyan);
-    min-width: 30px;
+    min-width: 36px;
 }
 
 /* Text Input */
 .text-control {
-    padding: 10px 15px;
+    padding: 12px 16px;
     background-color: var(--input-bg);
     border: 1px solid var(--input-border);
     border-radius: 8px;
     color: var(--text-primary);
     font-family: monospace;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .text-control:focus {
@@ -1747,9 +1767,9 @@ input:checked+.toggle-slider::before {
 
 /* Status Badge */
 .status-badge {
-    padding: 6px 12px;
+    padding: 8px 14px;
     border-radius: 20px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
 }
 
@@ -2706,67 +2726,40 @@ input:checked+.toggle-slider::before {
 }
 
 /* ============================================
-   SETTINGS - COMPACT
-   ============================================ */
-.settings-page {
-    gap: 15px;
-    padding: 15px;
-}
-
-.settings-nav {
-    gap: 4px;
-}
-
-.settings-nav-item {
-    padding: 12px 15px;
-    font-size: 14px;
-}
-
-.settings-content {
-    padding: 20px;
-}
-
-.settings-section h2 {
-    font-size: 20px;
-    margin-bottom: 20px;
-}
-
-.setting-item {
-    padding: 14px 0;
-}
-
-.setting-label {
-    font-size: 14px;
-}
-
-.setting-desc {
-    font-size: 11px;
-}
-
-.about-content {
-    gap: 25px;
-    padding: 20px 0;
-}
-
-.about-logo img {
-    width: 120px;
-}
-
-.about-info h3 {
-    font-size: 22px;
-}
-
-.about-footer {
-    padding-top: 20px;
-}
-
-/* ============================================
    RESPONSIVE - Ensure 1280x720 works
    ============================================ */
 @media (max-height: 800px) {
     .page-content {
         padding: 12px;
         gap: 12px;
+    }
+
+    .settings-page {
+        grid-template-columns: 220px 1fr;
+        gap: 18px;
+    }
+
+    .settings-nav-item {
+        font-size: 19px;
+        padding: 15px 18px;
+    }
+
+    .settings-section h2 {
+        font-size: 26px;
+    }
+
+    .setting-label {
+        font-size: 19px;
+    }
+
+    .setting-desc {
+        font-size: 15px;
+    }
+
+    .theme-option,
+    .select-control,
+    .text-control {
+        font-size: 17px;
     }
 
     .main-app > .top-bar {
@@ -2803,23 +2796,23 @@ input:checked+.toggle-slider::before {
 
 @media (max-width: 1400px) {
     .menu-container {
-        grid-template-columns: repeat(4, minmax(150px, 190px));
-        gap: 18px;
-        padding: 20px;
+        grid-template-columns: repeat(4, minmax(168px, 212px));
+        gap: 20px;
+        padding: 22px;
     }
 
     .menu-button {
-        min-height: 170px;
+        min-height: 192px;
     }
 
     .btn-icon {
-        width: 72px;
-        height: 72px;
+        width: 82px;
+        height: 82px;
     }
 
     .btn-label {
-        font-size: 19px;
-        letter-spacing: 1.5px;
+        font-size: 20px;
+        letter-spacing: 1.55px;
     }
 }
 
@@ -2834,9 +2827,13 @@ input:checked+.toggle-slider::before {
    ============================================ */
 .diagnostics-page {
     display: grid;
-    grid-template-columns: 1fr 1fr 280px;
+    grid-template-columns: 1fr 1fr;
     gap: 15px;
     padding: 15px;
+}
+
+.logs-panel {
+    grid-column: 1 / -1;
 }
 
 .diag-panel {
@@ -2852,6 +2849,38 @@ input:checked+.toggle-slider::before {
     gap: 12px;
 }
 
+.stat-extra {
+    margin-top: 12px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.stat-extra-item {
+    flex: 1 1 120px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--surface-overlay-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.stat-extra-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.stat-extra-value {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--accent-cyan);
+}
+
 .stat-card {
     background: var(--surface-overlay-subtle);
     border-radius: 10px;
@@ -2863,6 +2892,71 @@ input:checked+.toggle-slider::before {
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+}
+
+.temp-unit-toggle {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--surface-overlay);
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 12px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.temp-unit-toggle:hover {
+    background: var(--surface-overlay-hover);
+    color: var(--text-primary);
+}
+
+.stat-history {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.stat-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.stat-history-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.stat-history-select {
+    padding: 8px 10px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-family: var(--font-primary);
+    font-size: 12px;
+    cursor: pointer;
+    color-scheme: inherit;
+}
+
+.stat-history-select option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.stat-history-canvas {
+    width: 100%;
+    height: 160px;
+    display: block;
+    background: var(--surface-overlay-subtle);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
 }
 
 .stat-icon {
@@ -3003,7 +3097,22 @@ input:checked+.toggle-slider::before {
 
 .log-actions {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+}
+
+.log-actions-right {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.log-actions .diag-led-btn.led-on {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
 }
 
 .diagnostics-icon {
@@ -3011,4 +3120,66 @@ input:checked+.toggle-slider::before {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* ============================================
+   DIAGNOSTICS - 1280x720 LAYOUT
+   (must appear after base diagnostics rules)
+   ============================================ */
+@media (max-height: 800px) {
+    .diagnostics-page {
+        grid-template-columns: 1fr 1fr 1fr;
+        align-items: start;
+        gap: 12px;
+        padding: 0;
+    }
+
+    /* undo the default "logs full-width" rule */
+    .diagnostics-page .logs-panel {
+        grid-column: auto;
+    }
+
+    .diagnostics-page .diag-panel {
+        padding: 12px;
+    }
+
+    .diagnostics-page .stat-card,
+    .diagnostics-page .qubit-status {
+        padding: 10px;
+    }
+
+    .diagnostics-page .stat-card .stat-value {
+        font-size: 24px;
+        margin-bottom: 6px;
+    }
+
+    .diagnostics-page .log-container {
+        height: 240px;
+        font-size: 10px;
+        margin-bottom: 8px;
+    }
+
+    .diagnostics-page .log-actions {
+        gap: 8px;
+    }
+
+    .diagnostics-page .log-actions .action-btn.compact,
+    .diagnostics-page .log-actions .diag-led-btn {
+        padding: 7px 12px;
+        font-size: 12px;
+    }
+
+    .diagnostics-page .stat-history {
+        margin-top: 10px;
+        padding-top: 10px;
+    }
+
+    .diagnostics-page .stat-history-canvas {
+        height: 150px;
+    }
+
+    .diagnostics-page .temp-unit-toggle {
+        font-size: 11px;
+        padding: 2px 7px;
+    }
 }

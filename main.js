@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, session, Menu } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs').promises;
@@ -327,6 +327,14 @@ async function readLedMaxBrightness(base) {
   }
 }
 
+/** Pi ACT LED: max_brightness is 1 and 0 = on, 1 = off (active-low). */
+function brightnessForOnboardLed(on, max) {
+  if (max === 1) {
+    return on ? '0' : '1';
+  }
+  return on ? String(max) : '0';
+}
+
 async function applyOnboardLed(on) {
   const base = await resolveLedPath();
   if (!base) {
@@ -334,7 +342,7 @@ async function applyOnboardLed(on) {
   }
 
   const max = await readLedMaxBrightness(base);
-  const brightness = on ? String(max) : '0';
+  const brightness = brightnessForOnboardLed(on, max);
 
   try {
     await fs.writeFile(`${base}/trigger`, 'none');
@@ -356,6 +364,41 @@ async function ensureOnboardLedOff() {
   }
 }
 
+/** Block DevTools shortcuts on every webContents (testing and production). */
+function isDevToolsAccelerator(input) {
+  if (input.type !== 'keyDown') return false;
+
+  if (input.key === 'F12') return true;
+
+  const key = input.key.length === 1 ? input.key.toLowerCase() : input.key;
+  if (!['i', 'j', 'c'].includes(key)) return false;
+
+  const cmdOrCtrl = input.control || input.meta;
+  if (!cmdOrCtrl) return false;
+
+  if (input.shift) return true;
+  if (input.meta && input.alt) return true;
+  if (input.control && input.alt) return true;
+
+  return false;
+}
+
+function installDevToolsGuards(contents) {
+  if (!contents || contents.isDestroyed()) return;
+
+  contents.on('before-input-event', (event, input) => {
+    if (isDevToolsAccelerator(input)) {
+      event.preventDefault();
+    }
+  });
+
+  contents.on('devtools-opened', () => {
+    if (!contents.isDestroyed()) {
+      contents.closeDevTools();
+    }
+  });
+}
+
 function installProductionInputGuards(contents) {
   if (!isProduction || !contents || contents.isDestroyed()) return;
 
@@ -366,24 +409,7 @@ function installProductionInputGuards(contents) {
   contents.on('before-input-event', (event, input) => {
     if (input.type === 'mouseDown' && (input.button === '3' || input.button === '4')) {
       event.preventDefault();
-      return;
     }
-    if (input.type === 'keyDown' && input.key === 'F12') {
-      event.preventDefault();
-      return;
-    }
-    if (
-      input.type === 'keyDown' &&
-      input.control &&
-      input.shift &&
-      (input.key === 'I' || input.key === 'i')
-    ) {
-      event.preventDefault();
-    }
-  });
-
-  contents.on('devtools-opened', () => {
-    contents.closeDevTools();
   });
 }
 
@@ -397,7 +423,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      devTools: false
     },
     backgroundColor: '#0a0a0f',
     show: false,
@@ -442,11 +469,13 @@ function createWindow() {
     mainWindow = null;
   });
 
+  installDevToolsGuards(mainWindow.webContents);
   installProductionInputGuards(mainWindow.webContents);
 }
 
 app.on('web-contents-created', (_event, contents) => {
   applyThemeToWebContents(contents, getCurrentTheme());
+  installDevToolsGuards(contents);
   installProductionInputGuards(contents);
 
   contents.setWindowOpenHandler(({ url }) => {
@@ -624,6 +653,9 @@ function installYoutubeEmbedSessionSupport() {
 }
 
 app.whenReady().then(async () => {
+  // No application menu — prevents View → Toggle Developer Tools (Alt accelerators on Windows)
+  Menu.setApplicationMenu(null);
+
   registerQubibyteProtocol();
   installYoutubeEmbedSessionSupport();
 
@@ -710,11 +742,10 @@ ipcMain.handle('get-system-info', async () => {
     });
 
     const showTemp = cachedSettings?.showTemp !== false;
-    if (!showTemp) {
-      return { time, temperature: '' };
-    }
 
-    let tempStr = TEMP_UNAVAILABLE;
+    let tempStr = showTemp ? TEMP_UNAVAILABLE : '';
+    let tempCValue = null;
+    let tempFValue = null;
     let tempValid = false;
 
     // Raspberry Pi: Use direct file reading (more reliable on Pi)
@@ -724,7 +755,9 @@ ipcMain.handle('get-system-info', async () => {
         const tempC = parseInt(tempData.trim(), 10) / 1000;
         if (isReasonableTempC(tempC)) {
           const tempF = (tempC * 9 / 5) + 32;
-          tempStr = `${tempF.toFixed(1)}°F`;
+          tempCValue = tempC;
+          tempFValue = tempF;
+          tempStr = showTemp ? `${tempF.toFixed(1)}°F` : '';
           tempValid = true;
         }
       } catch (fileError) {
@@ -744,7 +777,9 @@ ipcMain.handle('get-system-info', async () => {
           isTrustworthyCpuTempC(tempC, cpuTemp)
         ) {
           const tempF = (tempC * 9 / 5) + 32;
-          tempStr = `${tempF.toFixed(1)}°F`;
+          tempCValue = tempC;
+          tempFValue = tempF;
+          tempStr = showTemp ? `${tempF.toFixed(1)}°F` : '';
           tempValid = true;
         }
       } catch (siError) {
@@ -752,13 +787,40 @@ ipcMain.handle('get-system-info', async () => {
       }
     }
 
-    if (!tempValid) {
-      tempStr = TEMP_UNAVAILABLE;
-    }
+    if (!tempValid) tempStr = showTemp ? TEMP_UNAVAILABLE : '';
+
+    // Best-effort telemetry (available on Pi/Windows when Electron is running)
+    const safeAsync = (fn) => Promise.resolve()
+      .then(fn)
+      .catch(() => null);
+
+    // systeminformation mixes sync and async APIs depending on call
+    const [load, mem, uptime, net] = await Promise.all([
+      safeAsync(() => si.currentLoad()),
+      safeAsync(() => si.mem()),
+      safeAsync(() => si.time()),
+      safeAsync(() => si.networkStats())
+    ]);
+
+    const cpuPct = load?.currentload;
+    const memPct = mem ? (mem.used / mem.total) * 100 : null;
+    const upSeconds = uptime?.uptime ?? null;
+
+    // networkStats can return array
+    const net0 = Array.isArray(net) ? net[0] : net;
+    const rxSec = net0?.rx_sec ?? null;
+    const txSec = net0?.tx_sec ?? null;
 
     return {
       time,
-      temperature: tempStr
+      temperature: tempStr,
+      temperatureC: tempCValue,
+      temperatureF: tempFValue,
+      cpuPercent: Number.isFinite(cpuPct) ? cpuPct : null,
+      memoryPercent: Number.isFinite(memPct) ? memPct : null,
+      uptimeSeconds: Number.isFinite(upSeconds) ? upSeconds : null,
+      netRxBytesPerSec: Number.isFinite(rxSec) ? rxSec : null,
+      netTxBytesPerSec: Number.isFinite(txSec) ? txSec : null
     };
   } catch (error) {
     console.error('Error getting system info:', error);
@@ -769,7 +831,14 @@ ipcMain.handle('get-system-info', async () => {
     });
     return {
       time,
-      temperature: cachedSettings?.showTemp === false ? '' : TEMP_UNAVAILABLE
+      temperature: cachedSettings?.showTemp === false ? '' : TEMP_UNAVAILABLE,
+      temperatureC: null,
+      temperatureF: null,
+      cpuPercent: null,
+      memoryPercent: null,
+      uptimeSeconds: null,
+      netRxBytesPerSec: null,
+      netTxBytesPerSec: null
     };
   }
 });
