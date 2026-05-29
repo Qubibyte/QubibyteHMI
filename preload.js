@@ -8,6 +8,7 @@ const isRaspberryPi = process.platform === 'linux' &&
 contextBridge.exposeInMainWorld('electronAPI', {
   // System information
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+  getHeaderInfo: () => ipcRenderer.invoke('get-header-info'),
   getScreenSize: () => ipcRenderer.invoke('get-screen-size'),
 
   // Platform info
@@ -17,6 +18,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getOnboardLedState: () => ipcRenderer.invoke('get-onboard-led-state'),
   setOnboardLed: (on) => ipcRenderer.invoke('set-onboard-led', on),
   toggleOnboardLed: () => ipcRenderer.invoke('toggle-onboard-led'),
+  getDisplayBrightness: () => ipcRenderer.invoke('get-display-brightness'),
+  setDisplayBrightness: (level) => ipcRenderer.invoke('set-display-brightness', level),
+  getTimezones: () => ipcRenderer.invoke('get-timezones'),
+  setSystemTimezone: (timezone) => ipcRenderer.invoke('set-system-timezone', timezone),
+  getSystemDateTime: () => ipcRenderer.invoke('get-system-datetime'),
+  setSystemDateTime: (payload) => ipcRenderer.invoke('set-system-datetime', payload),
+  syncSystemDateTime: () => ipcRenderer.invoke('sync-system-datetime'),
 
   // Persistent settings (survives reboot — stored in userData/settings.json)
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -24,6 +32,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
   getLocalHttpOrigin: () => ipcRenderer.invoke('get-local-http-origin'),
   setAppTheme: (theme) => ipcRenderer.invoke('set-app-theme', theme),
+  onSettingsUpdated: (callback) => {
+    const handler = (_event, settings) => callback(settings);
+    ipcRenderer.on('qubibyte-settings-updated', handler);
+    return () => ipcRenderer.removeListener('qubibyte-settings-updated', handler);
+  },
 
   // Navigation
   navigate: (pagePath) => ipcRenderer.send('navigate', pagePath),

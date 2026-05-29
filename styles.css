@@ -52,6 +52,9 @@
     --modal-overlay: rgba(0, 0, 0, 0.75);
     --toggle-track: rgba(255, 255, 255, 0.12);
     --toggle-knob: #ffffff;
+    --range-track: rgba(255, 255, 255, 0.16);
+    --range-thumb: var(--accent-blue);
+    --range-thumb-border: rgba(255, 255, 255, 0.45);
     --on-accent: #ffffff;
     --scrollbar-thumb: rgba(255, 255, 255, 0.15);
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
@@ -115,6 +118,9 @@ html {
     --modal-overlay: rgba(0, 0, 0, 0.45);
     --toggle-track: rgba(0, 0, 0, 0.12);
     --toggle-knob: #ffffff;
+    --range-track: rgba(0, 0, 0, 0.14);
+    --range-thumb: var(--accent-blue);
+    --range-thumb-border: #ffffff;
     --scrollbar-thumb: rgba(0, 0, 0, 0.2);
     --scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
 }
@@ -154,6 +160,9 @@ html {
     --menu-btn-bg: rgba(30, 41, 59, 0.95);
     --menu-btn-border: var(--surface-overlay-hover);
     --input-bg: rgba(255, 255, 255, 0.06);
+    --range-track: rgba(255, 255, 255, 0.18);
+    --range-thumb: var(--accent-blue);
+    --range-thumb-border: rgba(226, 232, 240, 0.5);
 }
 
 /* Quantum Theme */
@@ -191,6 +200,9 @@ html {
     --menu-btn-bg: rgba(45, 31, 61, 0.95);
     --menu-btn-border: rgba(255, 255, 255, 0.12);
     --input-bg: rgba(255, 255, 255, 0.06);
+    --range-track: rgba(255, 255, 255, 0.14);
+    --range-thumb: var(--accent-cyan);
+    --range-thumb-border: rgba(245, 240, 255, 0.45);
 }
 
 /* ============================================
@@ -642,6 +654,11 @@ body {
 .top-bar-right {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
+}
+
+.subpage-top-bar .top-bar-right {
+    max-width: 45%;
 }
 
 /* Compact top bar on sub-pages (settings, embeds, calibration, etc.) — main menu stays full size */
@@ -681,7 +698,7 @@ body {
 .system-info {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.75em;
+    gap: 1.15em;
     font-family: var(--font-display);
     font-size: 22px;
     font-weight: 500;
@@ -693,7 +710,7 @@ body {
     font-size: 13px;
     letter-spacing: 0.5px;
     white-space: nowrap;
-    gap: 0.65em;
+    gap: 1em;
 }
 
 /* ============================================
@@ -1718,31 +1735,346 @@ input:checked+.toggle-slider::before {
     box-shadow: 0 0 0 1px var(--accent-blue);
 }
 
-/* Range Control */
-.range-control {
-    width: 150px;
-    height: 6px;
-    background: var(--surface-overlay-hover);
-    border-radius: 3px;
-    outline: none;
-    -webkit-appearance: none;
-    appearance: none;
+/* Unit picker (°F / °C) — theme tokens only */
+.unit-picker {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
 }
 
-.range-control::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--accent-blue);
-    border-radius: 50%;
+.unit-picker .unit-option {
+    min-width: 56px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     cursor: pointer;
+    transition: background var(--transition-speed) ease, color var(--transition-speed) ease,
+        box-shadow var(--transition-speed) ease;
+}
+
+.unit-picker .unit-option:hover {
+    color: var(--text-primary);
+    background: var(--surface-overlay-subtle);
+}
+
+.unit-picker .unit-option.active {
+    background: var(--accent-blue);
+    color: var(--on-accent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-blue) 40%, transparent);
+}
+
+.unit-picker .unit-option:focus-visible {
+    outline: 2px solid var(--accent-cyan);
+    outline-offset: 2px;
+}
+
+.setting-item--stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+}
+
+.setting-item--stacked .setting-control {
+    width: 100%;
+    max-width: none;
+    justify-content: stretch;
+}
+
+.timezone-control {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 480px;
+}
+
+.timezone-select {
+    width: 100%;
+    max-width: 480px;
+    min-width: 0;
+}
+
+.datetime-control {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 520px;
+}
+
+.datetime-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+}
+
+.datetime-fields {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.datetime-sync-field {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 88px;
+}
+
+.datetime-field-label--spacer {
+    visibility: hidden;
+    user-select: none;
+}
+
+.settings-page .datetime-input {
+    box-sizing: border-box;
+    min-height: 50px;
+    line-height: 1.25;
+}
+
+.datetime-sync-btn {
+    box-sizing: border-box;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 88px;
+    min-height: 50px;
+    height: 50px;
+    padding: 0 16px;
+    border-radius: 8px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: background var(--transition-speed) ease, border-color var(--transition-speed) ease,
+        color var(--transition-speed) ease, transform var(--transition-speed) ease,
+        box-shadow var(--transition-speed) ease;
+}
+
+.datetime-sync-icon {
+    font-size: 18px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    transition: transform 0.45s ease, color var(--transition-speed) ease;
+}
+
+.datetime-sync-btn:hover {
+    background: var(--surface-overlay-medium);
+    border-color: var(--accent-blue);
+    box-shadow: 0 4px 14px var(--shadow-color);
+}
+
+.datetime-sync-btn:hover .datetime-sync-icon {
+    color: var(--accent-blue);
+    transform: rotate(-200deg);
+}
+
+.datetime-sync-btn:active {
+    transform: scale(0.97);
+}
+
+.datetime-sync-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 3px;
+}
+
+.datetime-sync-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.datetime-sync-btn.is-syncing .datetime-sync-icon {
+    animation: datetime-sync-spin 0.85s linear infinite;
+    color: var(--accent-blue);
+}
+
+@keyframes datetime-sync-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.datetime-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.datetime-field-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.datetime-input {
+    width: 100%;
+    min-width: 0;
+    color-scheme: var(--color-scheme);
+}
+
+.datetime-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 28%, transparent);
+}
+
+@media (max-width: 520px) {
+    .datetime-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .datetime-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .datetime-sync-field {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .datetime-field-label--spacer {
+        display: none;
+    }
+}
+
+/* Range Control (theme tokens: --range-track, --range-thumb, --range-thumb-border) */
+.range-control,
+.brightness-slider {
+    width: 150px;
+    height: 8px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.range-control::-webkit-slider-runnable-track,
+.brightness-slider::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--range-track);
+    border: 1px solid var(--input-border);
+}
+
+.range-control::-webkit-slider-thumb,
+.brightness-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -6px;
+    border-radius: 50%;
+    background: var(--range-thumb);
+    border: 2px solid var(--range-thumb-border);
+    box-shadow: 0 1px 4px var(--shadow-color);
+    cursor: pointer;
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+.range-control:hover::-webkit-slider-thumb,
+.brightness-slider:hover::-webkit-slider-thumb {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--range-thumb) 35%, transparent);
+}
+
+.range-control::-moz-range-track,
+.brightness-slider::-moz-range-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--range-track);
+    border: 1px solid var(--input-border);
+}
+
+.range-control::-moz-range-thumb,
+.brightness-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--range-thumb);
+    border: 2px solid var(--range-thumb-border);
+    box-shadow: 0 1px 4px var(--shadow-color);
+    cursor: pointer;
+}
+
+.range-control:focus-visible,
+.brightness-slider:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 4px;
 }
 
 .range-value {
     font-family: monospace;
     font-size: 15px;
     color: var(--accent-cyan);
-    min-width: 36px;
+    min-width: 44px;
+    text-align: right;
+}
+
+.setting-control.brightness-control {
+    flex: 1;
+    justify-content: flex-end;
+    max-width: min(320px, 55vw);
+    gap: 14px;
+    position: relative;
+}
+
+.setting-control.brightness-control .brightness-slider {
+    flex: 1;
+    width: auto;
+    min-width: 140px;
+    max-width: 220px;
+}
+
+.brightness-control.is-readonly .brightness-slider {
+    pointer-events: none;
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.brightness-control.is-readonly .brightness-slider::-webkit-slider-thumb,
+.brightness-control.is-readonly .brightness-slider::-moz-range-thumb {
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 1px 3px var(--shadow-color);
+}
+
+.brightness-control.is-readonly .range-value {
+    color: var(--text-muted);
+}
+
+.brightness-control.is-readonly {
+    cursor: not-allowed;
 }
 
 /* Text Input */

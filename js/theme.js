@@ -156,25 +156,323 @@
         syncThemeFromWebsite(data.theme);
     });
 
+    function readAppSettings() {
+        try {
+            const raw = localStorage.getItem('qubibyte-settings');
+            return raw ? JSON.parse(raw) : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function readTempUnitFromStorage() {
+        return readAppSettings().tempUnit === 'C' ? 'C' : 'F';
+    }
+
+    function readTimezoneFromStorage() {
+        const settings = readAppSettings();
+        const tz = typeof settings.timezone === 'string' ? settings.timezone.trim() : '';
+        if (tz) {
+            try {
+                Intl.DateTimeFormat(undefined, { timeZone: tz });
+                return tz;
+            } catch {
+                /* fall through */
+            }
+        }
+        try {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone;
+        } catch {
+            return 'UTC';
+        }
+    }
+
+    function tempUnavailable(unit) {
+        return unit === 'C' ? 'N/A°C' : 'N/A°F';
+    }
+
+    function formatHeaderTemperature(info) {
+        const unit = (info && info.tempUnit) || readTempUnitFromStorage();
+        if (info?.temperatureC != null && Number.isFinite(info.temperatureC)) {
+            if (unit === 'C') return `${info.temperatureC.toFixed(1)}°C`;
+            const f = info.temperatureF != null && Number.isFinite(info.temperatureF)
+                ? info.temperatureF
+                : (info.temperatureC * 9) / 5 + 32;
+            return `${f.toFixed(1)}°F`;
+        }
+        const raw = typeof info?.temperature === 'string' ? info.temperature.trim() : '';
+        if (raw && !isPlaceholderTemp(raw)) return raw;
+        return tempUnavailable(unit);
+    }
+
+    function localTimeString(timezone) {
+        const tz = timezone || readTimezoneFromStorage();
+        return new Date().toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: tz
+        });
+    }
+
+    function headerTimeFromInfo(info) {
+        if (info && info.time) return info.time;
+        const tz = (info && info.timezone) || readTimezoneFromStorage();
+        return localTimeString(tz);
+    }
+
+    function readShowTempFromStorage() {
+        return readAppSettings().showTemp !== false;
+    }
+
+    function resolveShowTemperature(info) {
+        if (info && (info.showTemperature === false || info.showTemp === false)) {
+            return false;
+        }
+        if (info && (info.showTemperature === true || info.showTemp === true)) {
+            return true;
+        }
+        return readShowTempFromStorage();
+    }
+
+    const HEADER_CACHE_KEY = 'qubibyte-header-cache';
+    let lastHeaderInfo = null;
+
+    function loadHeaderCache() {
+        try {
+            const raw = sessionStorage.getItem(HEADER_CACHE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                lastHeaderInfo = parsed;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function saveHeaderCache() {
+        if (!lastHeaderInfo) return;
+        try {
+            sessionStorage.setItem(HEADER_CACHE_KEY, JSON.stringify(lastHeaderInfo));
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function isPlaceholderTemp(temp) {
+        const t = (temp || '').trim();
+        return t === '…' || t === '...';
+    }
+
+    function rememberHeaderInfo(info) {
+        if (!info) return;
+        const showTemperature = resolveShowTemperature(info);
+        const formatted = showTemperature ? formatHeaderTemperature(info) : '';
+        if (showTemperature && isPlaceholderTemp(formatted) && info.temperatureC == null) return;
+
+        lastHeaderInfo = {
+            showTemperature,
+            showTemp: showTemperature,
+            temperature: showTemperature ? formatHeaderTemperature(info) : '',
+            temperatureC: info.temperatureC ?? null,
+            temperatureF: info.temperatureF ?? null,
+            tempUnit: info.tempUnit || readTempUnitFromStorage(),
+            timezone: info.timezone || readTimezoneFromStorage()
+        };
+        saveHeaderCache();
+    }
+
+    function ensureHeaderSpans(el) {
+        let tempEl = el.querySelector('.header-temp');
+        let timeEl = el.querySelector('.header-time');
+        if (!timeEl) {
+            el.replaceChildren();
+            tempEl = document.createElement('span');
+            tempEl.className = 'header-temp';
+            timeEl = document.createElement('span');
+            timeEl.className = 'header-time';
+            el.append(tempEl, timeEl);
+        } else if (!tempEl) {
+            tempEl = document.createElement('span');
+            tempEl.className = 'header-temp';
+            el.insertBefore(tempEl, timeEl);
+        }
+        return { tempEl, timeEl };
+    }
+
+    function readHeaderFromEl(el) {
+        const timeEl = el.querySelector('.header-time');
+        if (timeEl) {
+            const tempEl = el.querySelector('.header-temp');
+            const tempText = tempEl && tempEl.style.display !== 'none'
+                ? tempEl.textContent.trim()
+                : '';
+            return {
+                temp: isPlaceholderTemp(tempText) ? '' : tempText,
+                time: timeEl.textContent.trim() || localTimeString()
+            };
+        }
+        const trimmed = (el.textContent || '').trim();
+        const parts = trimmed.split(/\s{2,}/);
+        if (parts.length >= 2) {
+            const temp = parts[0].trim();
+            return {
+                temp: isPlaceholderTemp(temp) ? '' : temp,
+                time: parts[parts.length - 1].trim()
+            };
+        }
+        return { temp: '', time: trimmed || localTimeString() };
+    }
+
     function applySystemInfo(el, info) {
         if (!el) return;
-        const time = info?.time ?? '';
-        if (!info?.temperature) {
-            el.textContent = time;
-            return;
+
+        const showTemperature = resolveShowTemperature(info);
+        const { tempEl, timeEl } = ensureHeaderSpans(el);
+        const merged = {
+            ...info,
+            tempUnit: info?.tempUnit || readTempUnitFromStorage(),
+            timezone: info?.timezone || readTimezoneFromStorage()
+        };
+
+        el.style.removeProperty('display');
+        timeEl.textContent = headerTimeFromInfo(merged);
+
+        if (showTemperature) {
+            tempEl.textContent = formatHeaderTemperature(merged);
+            tempEl.style.display = '';
+        } else {
+            tempEl.textContent = '';
+            tempEl.style.display = 'none';
         }
-        el.replaceChildren();
-        const tempSpan = document.createElement('span');
-        tempSpan.className = 'system-info-temp';
-        tempSpan.textContent = info.temperature;
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'system-info-time';
-        timeSpan.textContent = time;
-        el.appendChild(tempSpan);
-        el.appendChild(timeSpan);
+
+        rememberHeaderInfo(merged);
+    }
+
+    function applyHeaderInfoImmediate(showTemp) {
+        const showTemperature = showTemp !== false;
+        const tempUnit = readTempUnitFromStorage();
+        const timezone = readTimezoneFromStorage();
+        document.querySelectorAll('.system-info').forEach((el) => {
+            const { temp, time } = readHeaderFromEl(el);
+            const info = {
+                time,
+                timezone,
+                tempUnit,
+                showTemperature,
+                showTemp: showTemperature,
+                temperature: showTemperature ? temp : ''
+            };
+            if (lastHeaderInfo) {
+                info.temperatureC = lastHeaderInfo.temperatureC;
+                info.temperatureF = lastHeaderInfo.temperatureF;
+            }
+            applySystemInfo(el, info);
+        });
+    }
+
+    function paintHeaderInstant() {
+        const showTemperature = readShowTempFromStorage();
+        const tempUnit = readTempUnitFromStorage();
+        const timezone = readTimezoneFromStorage();
+        const info = {
+            time: localTimeString(timezone),
+            timezone,
+            tempUnit,
+            showTemperature,
+            showTemp: showTemperature
+        };
+
+        if (showTemperature) {
+            if (lastHeaderInfo && lastHeaderInfo.showTemperature) {
+                info.temperatureC = lastHeaderInfo.temperatureC;
+                info.temperatureF = lastHeaderInfo.temperatureF;
+                info.temperature = formatHeaderTemperature({
+                    ...lastHeaderInfo,
+                    tempUnit
+                });
+            } else {
+                info.temperature = tempUnavailable(tempUnit);
+            }
+        }
+
+        document.querySelectorAll('.system-info').forEach((el) => applySystemInfo(el, info));
+    }
+
+    let headerRefreshChain = Promise.resolve();
+    let headerIntervalStarted = false;
+
+    function refreshHeaderInfo() {
+        const run = async () => {
+            const els = [...document.querySelectorAll('.system-info')];
+            if (!els.length) return;
+
+            const fetchInfo = window.electronAPI?.getHeaderInfo || window.electronAPI?.getSystemInfo;
+
+            if (!fetchInfo) {
+                const showTemperature = readShowTempFromStorage();
+                const tempUnit = readTempUnitFromStorage();
+                const timezone = readTimezoneFromStorage();
+                const fallback = {
+                    time: localTimeString(timezone),
+                    timezone,
+                    tempUnit,
+                    showTemperature,
+                    showTemp: showTemperature,
+                    temperature: showTemperature ? tempUnavailable(tempUnit) : ''
+                };
+                els.forEach((el) => applySystemInfo(el, fallback));
+                return;
+            }
+
+            try {
+                const info = await fetchInfo();
+                els.forEach((el) => applySystemInfo(el, info));
+            } catch (e) {
+                console.error('Header info refresh failed:', e);
+                paintHeaderInstant();
+            }
+        };
+
+        headerRefreshChain = headerRefreshChain.then(run, run);
+        return headerRefreshChain;
+    }
+
+    function setupHeaderInfo() {
+        paintHeaderInstant();
+        refreshHeaderInfo();
+        if (!headerIntervalStarted) {
+            headerIntervalStarted = true;
+            setInterval(refreshHeaderInfo, 5000);
+        }
     }
 
     window.applySystemInfo = applySystemInfo;
+    window.applyHeaderInfoImmediate = applyHeaderInfoImmediate;
+    window.refreshHeaderInfo = refreshHeaderInfo;
+    window.refreshSystemInfo = refreshHeaderInfo;
+    window.setupHeaderInfo = setupHeaderInfo;
+
+    if (window.electronAPI?.onSettingsUpdated) {
+        window.electronAPI.onSettingsUpdated(() => {
+            refreshHeaderInfo();
+        });
+    }
+
+    function bootHeaderInfo() {
+        if (document.querySelector('.system-info')) {
+            setupHeaderInfo();
+        }
+    }
+
+    loadHeaderCache();
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootHeaderInfo, { once: true });
+    } else {
+        bootHeaderInfo();
+    }
 
     window.QubibyteTheme = {
         apply: applyTheme,

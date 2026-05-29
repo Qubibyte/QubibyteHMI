@@ -88,6 +88,18 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
+                            <span class="setting-label">Screen Brightness</span>
+                            <span class="setting-desc">Pi Touch Display backlight</span>
+                        </div>
+                        <div class="setting-control brightness-control" id="brightness-control">
+                            <input type="range" class="range-control brightness-slider" id="brightness-slider"
+                                min="1" max="31" step="1" value="31" aria-label="Screen brightness">
+                            <span class="range-value" id="brightness-value">31</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
                             <span class="setting-label">Show Temperature</span>
                             <span class="setting-desc">Display CPU temp in header</span>
                         </div>
@@ -96,6 +108,62 @@
                                 <input type="checkbox" id="temp-toggle" checked>
                                 <span class="toggle-slider"></span>
                             </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Temperature Unit</span>
+                            <span class="setting-desc">Header temperature scale</span>
+                        </div>
+                        <div class="setting-control">
+                            <div class="unit-picker" id="temp-unit-picker" role="group" aria-label="Temperature unit">
+                                <button type="button" class="unit-option active" data-unit="F">°F</button>
+                                <button type="button" class="unit-option" data-unit="C">°C</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-item setting-item--stacked">
+                        <div class="setting-info">
+                            <span class="setting-label">Timezone</span>
+                            <span class="setting-desc">UTC offset for header and system clock</span>
+                        </div>
+                        <div class="setting-control timezone-control">
+                            <select id="timezone-select" class="select-control timezone-select"
+                                aria-label="Timezone"></select>
+                        </div>
+                    </div>
+
+                    <div class="setting-item setting-item--stacked">
+                        <div class="setting-info">
+                            <span class="setting-label">System Date &amp; Time</span>
+                            <span class="setting-desc">Manual edits disable NTP on Pi until you sync</span>
+                        </div>
+                        <div class="setting-control datetime-control">
+                            <div class="datetime-row">
+                                <div class="datetime-fields">
+                                    <label class="datetime-field">
+                                        <span class="datetime-field-label">Date</span>
+                                        <input type="date" id="system-date" class="text-control datetime-input"
+                                            aria-label="System date">
+                                    </label>
+                                    <label class="datetime-field">
+                                        <span class="datetime-field-label">Time</span>
+                                        <input type="time" id="system-time" class="text-control datetime-input"
+                                            aria-label="System time">
+                                    </label>
+                                </div>
+                                <div class="datetime-sync-field">
+                                    <span class="datetime-field-label datetime-field-label--spacer"
+                                        aria-hidden="true">&nbsp;</span>
+                                    <button type="button" class="datetime-sync-btn" id="datetime-sync"
+                                        aria-label="Sync date and time from network">
+                                        <span class="datetime-sync-icon" aria-hidden="true">↻</span>
+                                        <span class="datetime-sync-label">Sync</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -215,7 +283,7 @@
                 </div>
 
                 <div class="about-footer">
-                    <p>© 2026 Qubibyte Technologies</p>
+                    <p>© 2026 Qubibyte</p>
                 </div>
             </div>
         </div>

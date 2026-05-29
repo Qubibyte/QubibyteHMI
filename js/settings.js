@@ -6,10 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function init() {
     setupBackButton();
-    setupSystemInfo();
     setupNavigation();
     setupControls();
     await loadSettings();
+    setupBrightnessSlider();
+    setupTempUnitPicker();
+    await setupTimezoneSelect();
+    setupSystemDateTime();
+    setupSystemInfo();
     loadPlatformInfo();
     initBackgroundAnimation();
 }
@@ -31,26 +35,9 @@ function setupBackButton() {
     }
 }
 
-// System info display
+// System info display (implemented in theme.js)
 function setupSystemInfo() {
-    updateSystemInfo();
-    setInterval(updateSystemInfo, 5000);
-}
-
-async function updateSystemInfo() {
-    const infoEl = document.getElementById('system-info');
-    if (!infoEl) return;
-
-    if (window.electronAPI && window.electronAPI.getSystemInfo) {
-        try {
-            const info = await window.electronAPI.getSystemInfo();
-            window.applySystemInfo(infoEl, info);
-        } catch (e) {
-            infoEl.textContent = formatTime();
-        }
-    } else {
-        infoEl.textContent = formatTime();
-    }
+    window.setupHeaderInfo?.();
 }
 
 function formatTime() {
@@ -99,13 +86,425 @@ function setupControls() {
     const toggles = document.querySelectorAll('.toggle-switch input');
     toggles.forEach(toggle => {
         toggle.addEventListener('change', () => {
-            handleToggle(toggle.id, toggle.checked);
+            handleToggle(toggle.id, toggle.checked).catch((err) => {
+                console.error('Toggle handler failed:', err);
+            });
         });
     });
 
     // Buttons
     setupButtons();
 
+}
+
+let allTimezoneOptions = [];
+
+function syncTempUnitPicker(unit) {
+    const picker = document.getElementById('temp-unit-picker');
+    if (!picker) return;
+    const active = unit === 'C' ? 'C' : 'F';
+    picker.querySelectorAll('.unit-option').forEach((btn) => {
+        const isActive = btn.dataset.unit === active;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function setupTempUnitPicker() {
+    const picker = document.getElementById('temp-unit-picker');
+    if (!picker) return;
+
+    syncTempUnitPicker('F');
+
+    picker.querySelectorAll('.unit-option').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            syncTempUnitPicker(btn.dataset.unit);
+            await saveSettings();
+            const showTemp = document.getElementById('temp-toggle')?.checked ?? true;
+            window.applyHeaderInfoImmediate?.(showTemp);
+            void window.refreshHeaderInfo?.();
+        });
+    });
+}
+
+function resolveTimezoneForUi(stored) {
+    const tz = typeof stored === 'string' ? stored.trim() : '';
+    if (tz) return tz;
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+        return 'UTC';
+    }
+}
+
+function getTimezoneOffsetMinutes(tz, at = new Date()) {
+    try {
+        const utc = new Date(at.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const local = new Date(at.toLocaleString('en-US', { timeZone: tz }));
+        return Math.round((local - utc) / 60000);
+    } catch {
+        return 0;
+    }
+}
+
+function pickTimezoneSelection(stored, options) {
+    if (!options.length) return resolveTimezoneForUi(stored);
+    const tz = resolveTimezoneForUi(stored);
+    const exact = options.find((o) => o.id === tz);
+    if (exact) return exact.id;
+    const mins = getTimezoneOffsetMinutes(tz);
+    const byOffset = options.find((o) => o.offsetMinutes === mins);
+    if (byOffset) return byOffset.id;
+    return options[0].id;
+}
+
+function renderTimezoneOptions(options, selectedId) {
+    const select = document.getElementById('timezone-select');
+    if (!select) return;
+
+    const keep = selectedId || select.value;
+    select.replaceChildren();
+    const frag = document.createDocumentFragment();
+
+    for (const opt of options) {
+        const el = document.createElement('option');
+        el.value = opt.id;
+        el.textContent = opt.label || opt.id;
+        if (opt.id === keep) el.selected = true;
+        frag.appendChild(el);
+    }
+
+    select.appendChild(frag);
+
+    if (keep && ![...select.options].some((o) => o.value === keep)) {
+        const extra = document.createElement('option');
+        extra.value = keep;
+        extra.textContent = keep;
+        extra.selected = true;
+        select.insertBefore(extra, select.firstChild);
+    }
+}
+
+async function setupTimezoneSelect() {
+    const select = document.getElementById('timezone-select');
+    if (!select) return;
+
+    if (window.electronAPI?.getTimezones) {
+        try {
+            allTimezoneOptions = await window.electronAPI.getTimezones();
+        } catch (err) {
+            console.error('Failed to load timezones:', err);
+        }
+    }
+
+    if (!allTimezoneOptions.length) {
+        const fallback = resolveTimezoneForUi('');
+        allTimezoneOptions = [{ id: fallback, label: fallback, offsetMinutes: 0 }];
+    }
+
+    const saved = readAppSettingsFromLocal();
+    const selected = pickTimezoneSelection(saved.timezone, allTimezoneOptions);
+    renderTimezoneOptions(allTimezoneOptions, selected);
+
+    select.addEventListener('change', async () => {
+        await saveSettings();
+
+        if (window.electronAPI?.setSystemTimezone) {
+            try {
+                const result = await window.electronAPI.setSystemTimezone(select.value);
+                if (!result?.ok) {
+                    showNotification(
+                        'Could not change system timezone (admin rights may be required). Header clock still updated.',
+                        'info'
+                    );
+                }
+            } catch (err) {
+                console.error('System timezone change failed:', err);
+            }
+        }
+
+        void window.refreshHeaderInfo?.();
+        void refreshSystemDateTimeFields();
+    });
+}
+
+let datetimeUiSyncing = false;
+let datetimeApplyTimer = null;
+
+function paintSystemDateTime(state, syncInputs = true) {
+    const dateEl = document.getElementById('system-date');
+    const timeEl = document.getElementById('system-time');
+    if (!state || !syncInputs) return;
+
+    datetimeUiSyncing = true;
+    if (dateEl && state.date) dateEl.value = state.date;
+    if (timeEl && state.time) timeEl.value = state.time;
+    datetimeUiSyncing = false;
+}
+
+async function refreshSystemDateTimeFields() {
+    if (window.electronAPI?.getSystemDateTime) {
+        try {
+            const state = await window.electronAPI.getSystemDateTime();
+            paintSystemDateTime(state);
+            return;
+        } catch (err) {
+            console.error('Failed to read system date/time:', err);
+        }
+    }
+
+    const now = new Date();
+    paintSystemDateTime({
+        display: now.toLocaleString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }),
+        date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+        time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    });
+}
+
+async function applySystemDateTimeFromInputs() {
+    if (datetimeUiSyncing) return;
+
+    const dateEl = document.getElementById('system-date');
+    const timeEl = document.getElementById('system-time');
+    if (!dateEl || !timeEl) return;
+
+    const date = dateEl.value;
+    const time = timeEl.value;
+    if (!date || !time) return;
+
+    if (!window.electronAPI?.setSystemDateTime) {
+        showNotification('System clock control is not available.', 'info');
+        return;
+    }
+
+    try {
+        const result = await window.electronAPI.setSystemDateTime({ date, time });
+        if (result?.ok) {
+            paintSystemDateTime(result, false);
+            void window.refreshHeaderInfo?.();
+        } else if (window.electronAPI.isRaspberryPi || window.electronAPI.platform === 'win32') {
+            showNotification(
+                'Could not set system clock (admin rights may be required).',
+                'error'
+            );
+        }
+    } catch (err) {
+        console.error('Set system date/time failed:', err);
+        showNotification('Could not set system date and time.', 'error');
+    }
+}
+
+async function syncSystemDateTimeFromNetwork() {
+    const syncBtn = document.getElementById('datetime-sync');
+    if (!window.electronAPI?.syncSystemDateTime) {
+        showNotification('Network time sync is not available.', 'info');
+        return;
+    }
+
+    if (syncBtn) {
+        syncBtn.disabled = true;
+        syncBtn.classList.add('is-syncing');
+    }
+
+    try {
+        const result = await window.electronAPI.syncSystemDateTime();
+        if (result?.ok) {
+            paintSystemDateTime(result);
+            showNotification('Clock synced from network (NTP enabled).', 'success');
+            void window.refreshHeaderInfo?.();
+        } else if (window.electronAPI.isRaspberryPi || window.electronAPI.platform === 'win32') {
+            showNotification(
+                'Could not sync time (admin rights may be required).',
+                'error'
+            );
+        } else {
+            showNotification('Network time sync is not supported on this platform.', 'info');
+        }
+    } catch (err) {
+        console.error('Time sync failed:', err);
+        showNotification('Could not sync date and time.', 'error');
+    } finally {
+        if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.classList.remove('is-syncing');
+        }
+    }
+}
+
+function setupSystemDateTime() {
+    const dateEl = document.getElementById('system-date');
+    const timeEl = document.getElementById('system-time');
+    const syncBtn = document.getElementById('datetime-sync');
+    if (!dateEl || !timeEl) return;
+
+    void refreshSystemDateTimeFields();
+
+    const scheduleApply = () => {
+        if (datetimeUiSyncing) return;
+        clearTimeout(datetimeApplyTimer);
+        datetimeApplyTimer = setTimeout(() => {
+            applySystemDateTimeFromInputs();
+        }, 350);
+    };
+
+    dateEl.addEventListener('change', scheduleApply);
+    timeEl.addEventListener('change', scheduleApply);
+
+    if (syncBtn) {
+        syncBtn.addEventListener('click', () => {
+            syncSystemDateTimeFromNetwork().catch((err) => {
+                console.error('Sync button handler failed:', err);
+            });
+        });
+    }
+}
+
+function readAppSettingsFromLocal() {
+    try {
+        const raw = localStorage.getItem('qubibyte-settings');
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+let brightnessApplyTimer = null;
+const BRIGHTNESS_UI_MIN = 1;
+const BRIGHTNESS_UI_MAX = 31;
+
+function normalizeBrightnessSetting(value, maxLevel = BRIGHTNESS_UI_MAX) {
+    const cap = Number(maxLevel) > 0 ? Number(maxLevel) : BRIGHTNESS_UI_MAX;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return cap;
+    if (n > cap) {
+        return Math.min(cap, Math.max(BRIGHTNESS_UI_MIN, Math.round((n / 100) * cap)));
+    }
+    return Math.min(cap, Math.max(BRIGHTNESS_UI_MIN, Math.round(n)));
+}
+
+function configureBrightnessSlider(maxLevel = BRIGHTNESS_UI_MAX, minLevel = BRIGHTNESS_UI_MIN) {
+    const slider = document.getElementById('brightness-slider');
+    if (!slider) return;
+    const cap = Number(maxLevel) > 0 ? Number(maxLevel) : BRIGHTNESS_UI_MAX;
+    const floor = Number(minLevel) > 0 ? Number(minLevel) : BRIGHTNESS_UI_MIN;
+    slider.min = String(floor);
+    slider.max = String(cap);
+}
+
+function paintBrightnessSlider(level, maxLevel) {
+    const slider = document.getElementById('brightness-slider');
+    const label = document.getElementById('brightness-value');
+    if (!slider || !label) return;
+    const cap = Number(maxLevel ?? slider.max) || BRIGHTNESS_UI_MAX;
+    configureBrightnessSlider(cap);
+    const value = normalizeBrightnessSetting(level, cap);
+    slider.value = String(value);
+    label.textContent = String(value);
+}
+
+async function applyDisplayBrightness(level) {
+    if (!window.electronAPI?.setDisplayBrightness) {
+        return { ok: false, reason: 'unavailable' };
+    }
+    return window.electronAPI.setDisplayBrightness(level);
+}
+
+const BRIGHTNESS_PI_ONLY_MSG = 'Screen brightness is only available on Raspberry Pi hardware.';
+
+function canControlDisplayBrightness() {
+    return Boolean(
+        window.electronAPI?.isRaspberryPi &&
+        window.electronAPI?.setDisplayBrightness
+    );
+}
+
+function updateBrightnessControlState() {
+    const slider = document.getElementById('brightness-slider');
+    const control = document.getElementById('brightness-control');
+    if (!slider || !control) return;
+
+    const enabled = canControlDisplayBrightness();
+    slider.disabled = !enabled;
+    control.classList.toggle('is-readonly', !enabled);
+    slider.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+}
+
+function notifyBrightnessUnavailable() {
+    if (!window.electronAPI?.setDisplayBrightness) {
+        showNotification('Display brightness control is not available.', 'info');
+        return;
+    }
+    showNotification(BRIGHTNESS_PI_ONLY_MSG, 'info');
+}
+
+function setupBrightnessSlider() {
+    const slider = document.getElementById('brightness-slider');
+    const control = document.getElementById('brightness-control');
+    if (!slider || !control) return;
+
+    updateBrightnessControlState();
+
+    let brightnessNotifyLock = false;
+    const blockReadonlyInteraction = (e) => {
+        if (!control.classList.contains('is-readonly')) return;
+        e.preventDefault();
+        if (brightnessNotifyLock) return;
+        brightnessNotifyLock = true;
+        notifyBrightnessUnavailable();
+        setTimeout(() => {
+            brightnessNotifyLock = false;
+        }, 500);
+    };
+
+    control.addEventListener('click', blockReadonlyInteraction);
+    control.addEventListener('touchend', blockReadonlyInteraction, { passive: false });
+
+    slider.addEventListener('input', () => {
+        if (!canControlDisplayBrightness()) return;
+
+        const level = Number(slider.value);
+        paintBrightnessSlider(level);
+
+        clearTimeout(brightnessApplyTimer);
+        brightnessApplyTimer = setTimeout(async () => {
+            try {
+                const result = await applyDisplayBrightness(level);
+                if (!result?.ok) {
+                    showNotification('Could not control display brightness.', 'error');
+                }
+            } catch (err) {
+                console.error('Brightness set failed:', err);
+                showNotification('Could not control display brightness.', 'error');
+            }
+        }, 80);
+    });
+
+    slider.addEventListener('change', async () => {
+        if (!canControlDisplayBrightness()) return;
+
+        const level = Number(slider.value);
+        paintBrightnessSlider(level);
+
+        try {
+            const result = await applyDisplayBrightness(level);
+            if (result?.ok) {
+                await saveSettings();
+            } else {
+                showNotification('Could not control display brightness.', 'error');
+            }
+        } catch (err) {
+            console.error('Brightness set failed:', err);
+            showNotification('Could not control display brightness.', 'error');
+        }
+    });
 }
 
 function setupButtons() {
@@ -154,18 +553,11 @@ function setupButtons() {
     }
 }
 
-function handleToggle(toggleId, isChecked) {
+async function handleToggle(toggleId, isChecked) {
     switch (toggleId) {
         case 'fullscreen-toggle':
             if (window.electronAPI && window.electronAPI.toggleFullscreen) {
                 window.electronAPI.toggleFullscreen(isChecked);
-            }
-            break;
-        case 'temp-toggle':
-            // Toggle temperature display
-            const tempDisplay = document.querySelector('.system-info');
-            if (tempDisplay) {
-                tempDisplay.style.display = isChecked ? 'block' : 'none';
             }
             break;
         case 'gpu-toggle':
@@ -175,7 +567,14 @@ function handleToggle(toggleId, isChecked) {
             showNotification('Auto-start ' + (isChecked ? 'enabled' : 'disabled'), 'info');
             break;
     }
-    saveSettings();
+    if (toggleId === 'temp-toggle') {
+        window.applyHeaderInfoImmediate?.(isChecked);
+        await saveSettings();
+        void window.refreshHeaderInfo?.();
+        return;
+    }
+
+    await saveSettings();
 }
 
 function setupThemePicker() {
@@ -270,6 +669,9 @@ function collectSettings() {
         theme: document.documentElement.dataset.theme || window.QubibyteTheme?.get() || 'dark',
         fullscreen: document.getElementById('fullscreen-toggle')?.checked ?? false,
         showTemp: document.getElementById('temp-toggle')?.checked ?? true,
+        tempUnit: document.querySelector('#temp-unit-picker .unit-option.active')?.dataset.unit === 'C' ? 'C' : 'F',
+        timezone: document.getElementById('timezone-select')?.value || '',
+        screenBrightness: Number(document.getElementById('brightness-slider')?.value ?? BRIGHTNESS_UI_MAX),
         animationSpeed: document.getElementById('animation-speed')?.value ?? '1',
         gpuAccel: document.getElementById('gpu-toggle')?.checked ?? false,
         autoStart: document.getElementById('autostart-toggle')?.checked ?? false,
@@ -314,14 +716,14 @@ function applySettingsToUI(settings) {
 
     const toggles = {
         'fullscreen-toggle': settings.fullscreen,
-        'temp-toggle': settings.showTemp,
+        'temp-toggle': settings.showTemp !== false,
         'gpu-toggle': settings.gpuAccel,
         'autostart-toggle': settings.autoStart
     };
 
     Object.entries(toggles).forEach(([id, value]) => {
         const toggle = document.getElementById(id);
-        if (toggle && value !== undefined) toggle.checked = value;
+        if (toggle) toggle.checked = Boolean(value);
     });
 
     if (settings.hwIp) {
@@ -331,6 +733,42 @@ function applySettingsToUI(settings) {
     if (settings.hwPort) {
         const portInput = document.getElementById('hw-port');
         if (portInput) portInput.value = settings.hwPort;
+    }
+
+    if (settings.screenBrightness !== undefined) {
+        paintBrightnessSlider(normalizeBrightnessSetting(settings.screenBrightness));
+    }
+
+    syncTempUnitPicker(settings.tempUnit || 'F');
+
+    const tz = pickTimezoneSelection(settings.timezone, allTimezoneOptions);
+    if (allTimezoneOptions.length) {
+        renderTimezoneOptions(allTimezoneOptions, tz);
+    } else {
+        const select = document.getElementById('timezone-select');
+        if (select) {
+            select.replaceChildren();
+            const opt = document.createElement('option');
+            opt.value = tz;
+            opt.textContent = tz;
+            opt.selected = true;
+            select.appendChild(opt);
+        }
+    }
+}
+
+async function syncBrightnessFromHardware() {
+    if (!window.electronAPI?.getDisplayBrightness) return;
+    try {
+        const state = await window.electronAPI.getDisplayBrightness();
+        if (state?.maxLevel) {
+            configureBrightnessSlider(state.maxLevel, state.minLevel ?? BRIGHTNESS_UI_MIN);
+        }
+        if (state?.level !== undefined) {
+            paintBrightnessSlider(state.level, state.maxLevel);
+        }
+    } catch (err) {
+        console.error('Brightness sync failed:', err);
     }
 }
 
@@ -369,6 +807,10 @@ async function loadSettings() {
     }
 
     applySettingsToUI(settings);
+
+    if (window.electronAPI?.isRaspberryPi) {
+        await syncBrightnessFromHardware();
+    }
 }
 
 function showLicenses() {

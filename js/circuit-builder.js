@@ -532,24 +532,7 @@ function setupBackButton() {
 
 // === SYSTEM INFO ===
 function setupSystemInfo() {
-    updateSystemInfo();
-    setInterval(updateSystemInfo, 5000);
-}
-
-async function updateSystemInfo() {
-    const el = document.getElementById('system-info');
-    if (!el) return;
-
-    try {
-        if (window.electronAPI?.getSystemInfo) {
-            const info = await window.electronAPI.getSystemInfo();
-            window.applySystemInfo(el, info);
-        } else {
-            el.textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        }
-    } catch (e) {
-        el.textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
+    window.setupHeaderInfo?.();
 }
 
 // === BACKGROUND ANIMATION ===

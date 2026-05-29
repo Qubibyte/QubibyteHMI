@@ -37,24 +37,7 @@ function goToMenu() {
 }
 
 function setupSystemInfo() {
-    updateSystemInfo();
-    setInterval(updateSystemInfo, 5000);
-}
-
-async function updateSystemInfo() {
-    const infoEl = document.getElementById('system-info');
-    if (!infoEl) return;
-
-    if (window.electronAPI && window.electronAPI.getSystemInfo) {
-        try {
-            const info = await window.electronAPI.getSystemInfo();
-            window.applySystemInfo(infoEl, info);
-        } catch (e) {
-            infoEl.textContent = formatTime();
-        }
-    } else {
-        infoEl.textContent = formatTime();
-    }
+    window.setupHeaderInfo?.();
 }
 
 function formatTime() {

@@ -3,6 +3,9 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const { pathToFileURL } = require('url');
 const si = require('systeminformation');
 const { resolveQubibyteFilePath } = require('./js/qubibyte-protocol');
@@ -13,6 +16,17 @@ const {
   injectThemeFlashGuard,
   appendThemeQuery
 } = require('./js/qubibyte-theme-paint');
+const {
+  getTimezoneOptions,
+  isValidTimezone,
+  resolveTimezone,
+  ianaToWindowsTimezone
+} = require('./js/qubibyte-timezones');
+const {
+  normalizeTempUnit,
+  tempUnavailable,
+  formatTemperatureFromValues
+} = require('./js/qubibyte-temp-format');
 
 // Configuration
 const TESTING_MODE = 1; // Set to 0 for fullscreen production mode (ignored on Raspberry Pi)
@@ -141,12 +155,18 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   fullscreen: false,
   showTemp: true,
+  tempUnit: 'F',
+  timezone: '',
+  screenBrightness: 31,
   animationSpeed: '1',
   gpuAccel: true,
   autoStart: false,
   hwIp: '192.168.1.100',
   hwPort: '8080'
 };
+
+const BRIGHTNESS_MIN_LEVEL = 1;
+const BRIGHTNESS_UI_MAX = 31;
 
 function getUserSettingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -193,6 +213,14 @@ async function loadUserSettings() {
   return cachedSettings;
 }
 
+function broadcastSettingsUpdated() {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('qubibyte-settings-updated');
+    }
+  });
+}
+
 async function saveUserSettings(settings) {
   const merged = { ...(await loadUserSettings()), ...settings };
   cachedSettings = merged;
@@ -200,6 +228,7 @@ async function saveUserSettings(settings) {
   await fs.writeFile(getUserSettingsPath(), JSON.stringify(merged, null, 2), 'utf8');
   console.log(`Saved user settings: ${getUserSettingsPath()}`);
   broadcastThemeToAllWindows(merged.theme);
+  broadcastSettingsUpdated();
   return merged;
 }
 
@@ -361,6 +390,170 @@ async function ensureOnboardLedOff() {
   const result = await applyOnboardLed(false);
   if (!result.ok) {
     console.warn('Could not initialize onboard LED to off:', result.reason);
+  }
+}
+
+let backlightBasePath = null;
+
+const BACKLIGHT_ID_PRIORITY = ['11-0045', '10-0045', '4-0045', '6-0045'];
+
+async function resolveBacklightPath() {
+  if (backlightBasePath) return backlightBasePath;
+  try {
+    const entries = await fs.readdir('/sys/class/backlight');
+    if (!entries.length) return null;
+
+    const touchPanels = entries.filter((name) => /-0045$/.test(name));
+    for (const id of BACKLIGHT_ID_PRIORITY) {
+      if (touchPanels.includes(id)) {
+        backlightBasePath = `/sys/class/backlight/${id}`;
+        return backlightBasePath;
+      }
+    }
+    if (touchPanels.length) {
+      backlightBasePath = `/sys/class/backlight/${touchPanels[0]}`;
+      return backlightBasePath;
+    }
+
+    if (entries.includes('rpi_backlight')) {
+      backlightBasePath = '/sys/class/backlight/rpi_backlight';
+      return backlightBasePath;
+    }
+
+    backlightBasePath = `/sys/class/backlight/${entries[0]}`;
+    return backlightBasePath;
+  } catch (error) {
+    console.error('Could not enumerate backlight devices:', error);
+  }
+  return null;
+}
+
+async function readBacklightMax(base) {
+  try {
+    const raw = await fs.readFile(`${base}/max_brightness`, 'utf8');
+    const max = parseInt(raw.trim(), 10);
+    return Number.isFinite(max) && max > 0 ? max : 31;
+  } catch {
+    return 31;
+  }
+}
+
+async function readBacklightRaw(base) {
+  const raw = await fs.readFile(`${base}/brightness`, 'utf8');
+  const val = parseInt(raw.trim(), 10);
+  return Number.isFinite(val) && val >= 0 ? val : 0;
+}
+
+function clampBrightnessLevel(level, max) {
+  const cap = Number.isFinite(max) && max > 0 ? max : BRIGHTNESS_UI_MAX;
+  const n = Number(level);
+  if (!Number.isFinite(n)) return cap;
+  return Math.min(cap, Math.max(BRIGHTNESS_MIN_LEVEL, Math.round(n)));
+}
+
+/** Legacy settings used 0–100 (%); map to hardware level 1–max. */
+function normalizeSavedBrightness(value, max = BRIGHTNESS_UI_MAX) {
+  const n = Number(value);
+  const cap = Number.isFinite(max) && max > 0 ? max : BRIGHTNESS_UI_MAX;
+  if (!Number.isFinite(n)) return cap;
+  if (n > cap) {
+    return clampBrightnessLevel(Math.round((n / 100) * cap), cap);
+  }
+  return clampBrightnessLevel(n, cap);
+}
+
+function rawToLevel(raw, max) {
+  if (raw < BRIGHTNESS_MIN_LEVEL) return BRIGHTNESS_MIN_LEVEL;
+  return clampBrightnessLevel(raw, max);
+}
+
+async function getDisplayBrightnessState() {
+  const settings = cachedSettings || (await loadUserSettings());
+  const savedLevel = normalizeSavedBrightness(
+    settings.screenBrightness ?? BRIGHTNESS_UI_MAX,
+    BRIGHTNESS_UI_MAX
+  );
+
+  if (!isRaspberryPi) {
+    return {
+      ok: false,
+      reason: 'not-pi',
+      level: savedLevel,
+      minLevel: BRIGHTNESS_MIN_LEVEL,
+      maxLevel: BRIGHTNESS_UI_MAX,
+      available: false
+    };
+  }
+
+  const base = await resolveBacklightPath();
+  if (!base) {
+    return {
+      ok: false,
+      reason: 'no-backlight',
+      level: savedLevel,
+      minLevel: BRIGHTNESS_MIN_LEVEL,
+      maxLevel: BRIGHTNESS_UI_MAX,
+      available: false
+    };
+  }
+
+  try {
+    const max = await readBacklightMax(base);
+    const raw = await readBacklightRaw(base);
+    return {
+      ok: true,
+      level: rawToLevel(raw, max),
+      minLevel: BRIGHTNESS_MIN_LEVEL,
+      maxLevel: max,
+      raw,
+      available: true,
+      path: base
+    };
+  } catch (error) {
+    console.error('Failed to read display brightness:', error);
+    return {
+      ok: false,
+      reason: error.message,
+      level: savedLevel,
+      minLevel: BRIGHTNESS_MIN_LEVEL,
+      maxLevel: BRIGHTNESS_UI_MAX,
+      available: false
+    };
+  }
+}
+
+async function setDisplayBrightness(level) {
+  if (!isRaspberryPi) {
+    const normalized = normalizeSavedBrightness(level, BRIGHTNESS_UI_MAX);
+    return { ok: false, reason: 'not-pi', level: normalized };
+  }
+
+  const base = await resolveBacklightPath();
+  if (!base) {
+    const normalized = normalizeSavedBrightness(level, BRIGHTNESS_UI_MAX);
+    return { ok: false, reason: 'no-backlight', level: normalized };
+  }
+
+  try {
+    const max = await readBacklightMax(base);
+    const raw = clampBrightnessLevel(level, max);
+    await fs.writeFile(`${base}/brightness`, String(raw));
+    console.log(`Display brightness level ${raw}/${max} via ${base}`);
+    return { ok: true, level: raw, max };
+  } catch (error) {
+    console.error('Failed to set display brightness:', error);
+    const normalized = normalizeSavedBrightness(level, BRIGHTNESS_UI_MAX);
+    return { ok: false, reason: error.message, level: normalized };
+  }
+}
+
+async function applySavedDisplayBrightness() {
+  if (!isRaspberryPi) return;
+  const settings = cachedSettings || (await loadUserSettings());
+  if (settings.screenBrightness === undefined) return;
+  const result = await setDisplayBrightness(settings.screenBrightness);
+  if (!result.ok) {
+    console.warn('Could not apply saved display brightness:', result.reason);
   }
 }
 
@@ -668,6 +861,8 @@ app.whenReady().then(async () => {
 
   await loadUserSettings();
   await ensureOnboardLedOff();
+  await applySavedDisplayBrightness();
+  await applySavedSystemTimezone();
   createWindow();
 
   app.on('activate', () => {
@@ -690,7 +885,7 @@ app.on('will-quit', () => {
   }
 });
 
-const TEMP_UNAVAILABLE = 'N/A°F';
+let cachedTimezoneOptions = null;
 /** WMI / systeminformation often reports ~27.8°C (82.0°F) when no CPU sensor exists. */
 const WINDOWS_TEMP_STUB_C = 27.8;
 const recentCpuTempC = [];
@@ -731,63 +926,258 @@ function isTrustworthyCpuTempC(tempC, cpuTemp) {
   return true;
 }
 
-// IPC handlers for system information
-ipcMain.handle('get-system-info', async () => {
+function formatHeaderTime(timezone) {
+  const tz = resolveTimezone(timezone);
+  return new Date().toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: tz
+  });
+}
+
+async function readHeaderTemperature(showTemp, tempUnit = 'F') {
+  if (!showTemp) {
+    return { temperature: '', temperatureC: null, temperatureF: null };
+  }
+
+  const unit = normalizeTempUnit(tempUnit);
+  let tempStr = tempUnavailable(unit);
+  let tempCValue = null;
+  let tempFValue = null;
+  let tempValid = false;
+
+  if (isRaspberryPi) {
+    try {
+      const tempData = await fs.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8');
+      const tempC = parseInt(tempData.trim(), 10) / 1000;
+      if (isReasonableTempC(tempC)) {
+        const tempF = (tempC * 9 / 5) + 32;
+        tempCValue = tempC;
+        tempFValue = tempF;
+        tempValid = true;
+      }
+    } catch (fileError) {
+      console.error('Error reading Raspberry Pi thermal file:', fileError);
+    }
+  } else {
+    try {
+      const cpuTemp = await si.cpuTemperature();
+      const tempC = cpuTemp?.main;
+      if (
+        cpuTemp &&
+        tempC !== undefined &&
+        tempC !== -1 &&
+        tempC > 0 &&
+        isTrustworthyCpuTempC(tempC, cpuTemp)
+      ) {
+        const tempF = (tempC * 9 / 5) + 32;
+        tempCValue = tempC;
+        tempFValue = tempF;
+        tempValid = true;
+      }
+    } catch (siError) {
+      console.error('Error getting temperature:', siError);
+    }
+  }
+
+  if (tempValid) {
+    tempStr = formatTemperatureFromValues(tempCValue, tempFValue, unit);
+  } else {
+    tempStr = tempUnavailable(unit);
+  }
+
+  return { temperature: tempStr, temperatureC: tempCValue, temperatureF: tempFValue };
+}
+
+async function buildHeaderInfoPayload() {
+  const settings = cachedSettings || (await loadUserSettings());
+  const showTemp = settings.showTemp !== false;
+  const tempUnit = normalizeTempUnit(settings.tempUnit);
+  const timezone = resolveTimezone(settings.timezone);
+  const time = formatHeaderTime(timezone);
+  const temps = await readHeaderTemperature(showTemp, tempUnit);
+  return {
+    time,
+    timezone,
+    tempUnit,
+    showTemperature: showTemp,
+    showTemp,
+    ...temps
+  };
+}
+
+async function setSystemTimezone(timezone) {
+  const tz = resolveTimezone(timezone);
+  if (!isValidTimezone(tz)) {
+    return { ok: false, reason: 'invalid-timezone' };
+  }
+
   try {
-    // Use 12-hour format with AM/PM
-    const time = new Date().toLocaleTimeString('en-US', {
+    if (isRaspberryPi) {
+      await execFileAsync('timedatectl', ['set-timezone', tz], { timeout: 15000 });
+      console.log(`System timezone set to ${tz}`);
+      return { ok: true, timezone: tz };
+    }
+
+    if (isWindows) {
+      const winTz = ianaToWindowsTimezone(tz);
+      if (!winTz) {
+        return { ok: false, reason: 'no-windows-mapping', timezone: tz };
+      }
+      const escaped = winTz.replace(/'/g, "''");
+      await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          `Set-TimeZone -Id '${escaped}'`
+        ],
+        { timeout: 15000 }
+      );
+      console.log(`Windows timezone set to ${winTz} (${tz})`);
+      return { ok: true, timezone: tz, windowsTimezone: winTz };
+    }
+
+    return { ok: false, reason: 'unsupported', timezone: tz };
+  } catch (error) {
+    console.error('Failed to set system timezone:', error);
+    return { ok: false, reason: error.message, timezone: tz };
+  }
+}
+
+async function applySavedSystemTimezone() {
+  if (!isRaspberryPi && !isWindows) return;
+  const settings = cachedSettings || (await loadUserSettings());
+  if (!settings.timezone) return;
+  const result = await setSystemTimezone(settings.timezone);
+  if (!result.ok) {
+    console.warn('Could not apply saved system timezone:', result.reason);
+  }
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function getSystemDateTimeState() {
+  const now = new Date();
+  return {
+    ok: true,
+    date: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`,
+    time: `${pad2(now.getHours())}:${pad2(now.getMinutes())}`,
+    display: now.toLocaleString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
-    });
+    }),
+    timestamp: now.getTime()
+  };
+}
 
-    const showTemp = cachedSettings?.showTemp !== false;
+async function setSystemDateTime(dateStr, timeStr) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(String(timeStr || '').trim());
+  if (!dateMatch || !timeMatch) {
+    return { ok: false, reason: 'invalid-datetime' };
+  }
 
-    let tempStr = showTemp ? TEMP_UNAVAILABLE : '';
-    let tempCValue = null;
-    let tempFValue = null;
-    let tempValid = false;
+  const y = Number(dateMatch[1]);
+  const mo = Number(dateMatch[2]);
+  const d = Number(dateMatch[3]);
+  const hh = Number(timeMatch[1]);
+  const mm = Number(timeMatch[2]);
+  const cmdStr = `${y}-${pad2(mo)}-${pad2(d)} ${pad2(hh)}:${pad2(mm)}:00`;
 
-    // Raspberry Pi: Use direct file reading (more reliable on Pi)
+  if (!isRaspberryPi && !isWindows) {
+    return { ok: false, reason: 'unsupported' };
+  }
+
+  try {
     if (isRaspberryPi) {
-      try {
-        const tempData = await fs.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8');
-        const tempC = parseInt(tempData.trim(), 10) / 1000;
-        if (isReasonableTempC(tempC)) {
-          const tempF = (tempC * 9 / 5) + 32;
-          tempCValue = tempC;
-          tempFValue = tempF;
-          tempStr = showTemp ? `${tempF.toFixed(1)}°F` : '';
-          tempValid = true;
-        }
-      } catch (fileError) {
-        console.error('Error reading Raspberry Pi thermal file:', fileError);
-      }
+      await execFileAsync('timedatectl', ['set-ntp', 'false'], { timeout: 10000 }).catch(() => {});
+      await execFileAsync('timedatectl', ['set-time', cmdStr], { timeout: 15000 });
+    } else {
+      await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          `Set-Date -Date '${cmdStr}'`
+        ],
+        { timeout: 15000 }
+      );
     }
-    // Windows/Mac/Other Linux: Use systeminformation package
-    else {
-      try {
-        const cpuTemp = await si.cpuTemperature();
-        const tempC = cpuTemp?.main;
-        if (
-          cpuTemp &&
-          tempC !== undefined &&
-          tempC !== -1 &&
-          tempC > 0 &&
-          isTrustworthyCpuTempC(tempC, cpuTemp)
-        ) {
-          const tempF = (tempC * 9 / 5) + 32;
-          tempCValue = tempC;
-          tempFValue = tempF;
-          tempStr = showTemp ? `${tempF.toFixed(1)}°F` : '';
-          tempValid = true;
-        }
-      } catch (siError) {
-        console.error('Error getting temperature:', siError);
-      }
-    }
+    console.log(`System date/time set to ${cmdStr}`);
+    return { ok: true, ...getSystemDateTimeState() };
+  } catch (error) {
+    console.error('Failed to set system date/time:', error);
+    return { ok: false, reason: error.message };
+  }
+}
 
-    if (!tempValid) tempStr = showTemp ? TEMP_UNAVAILABLE : '';
+async function syncSystemDateTime() {
+  if (!isRaspberryPi && !isWindows) {
+    return { ok: false, reason: 'unsupported' };
+  }
+
+  try {
+    if (isRaspberryPi) {
+      await execFileAsync('timedatectl', ['set-ntp', 'true'], { timeout: 10000 });
+      await execFileAsync('systemctl', ['restart', 'systemd-timesyncd'], { timeout: 15000 }).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      console.log('NTP re-enabled and time sync requested (systemd-timesyncd)');
+    } else {
+      await execFileAsync('w32tm', ['/resync', '/force'], { timeout: 30000 });
+      console.log('Windows time resync requested (w32tm)');
+    }
+    return { ok: true, ntpEnabled: true, ...getSystemDateTimeState() };
+  } catch (error) {
+    console.error('Failed to sync system date/time:', error);
+    return { ok: false, reason: error.message };
+  }
+}
+
+// Fast path for top-bar only (no CPU/mem/network telemetry)
+ipcMain.handle('get-header-info', async () => {
+  try {
+    return await buildHeaderInfoPayload();
+  } catch (error) {
+    console.error('Error getting header info:', error);
+    const settings = cachedSettings || (await loadUserSettings());
+    const showTemp = settings.showTemp !== false;
+    const tempUnit = normalizeTempUnit(settings.tempUnit);
+    const timezone = resolveTimezone(settings.timezone);
+    return {
+      time: formatHeaderTime(timezone),
+      timezone,
+      tempUnit,
+      showTemperature: showTemp,
+      showTemp,
+      temperature: showTemp ? tempUnavailable(tempUnit) : '',
+      temperatureC: null,
+      temperatureF: null
+    };
+  }
+});
+
+// IPC handlers for system information
+ipcMain.handle('get-system-info', async () => {
+  try {
+    const settings = cachedSettings || (await loadUserSettings());
+    const showTemp = settings.showTemp !== false;
+    const tempUnit = normalizeTempUnit(settings.tempUnit);
+    const timezone = resolveTimezone(settings.timezone);
+    const time = formatHeaderTime(timezone);
+    const temps = await readHeaderTemperature(showTemp, tempUnit);
 
     // Best-effort telemetry (available on Pi/Windows when Electron is running)
     const safeAsync = (fn) => Promise.resolve()
@@ -813,9 +1203,13 @@ ipcMain.handle('get-system-info', async () => {
 
     return {
       time,
-      temperature: tempStr,
-      temperatureC: tempCValue,
-      temperatureF: tempFValue,
+      timezone,
+      tempUnit,
+      showTemperature: showTemp,
+      showTemp,
+      temperature: temps.temperature,
+      temperatureC: temps.temperatureC,
+      temperatureF: temps.temperatureF,
       cpuPercent: Number.isFinite(cpuPct) ? cpuPct : null,
       memoryPercent: Number.isFinite(memPct) ? memPct : null,
       uptimeSeconds: Number.isFinite(upSeconds) ? upSeconds : null,
@@ -824,14 +1218,17 @@ ipcMain.handle('get-system-info', async () => {
     };
   } catch (error) {
     console.error('Error getting system info:', error);
-    const time = new Date().toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+    const settings = cachedSettings || (await loadUserSettings());
+    const showTemp = settings.showTemp !== false;
+    const tempUnit = normalizeTempUnit(settings.tempUnit);
+    const timezone = resolveTimezone(settings.timezone);
     return {
-      time,
-      temperature: cachedSettings?.showTemp === false ? '' : TEMP_UNAVAILABLE,
+      time: formatHeaderTime(timezone),
+      timezone,
+      tempUnit,
+      showTemperature: showTemp,
+      showTemp,
+      temperature: showTemp ? tempUnavailable(tempUnit) : '',
       temperatureC: null,
       temperatureF: null,
       cpuPercent: null,
@@ -860,8 +1257,33 @@ ipcMain.handle('save-settings', async (event, settings) => {
     return { ok: false, reason: 'invalid-settings' };
   }
   const saved = await saveUserSettings(settings);
+  if (isRaspberryPi && settings.screenBrightness !== undefined) {
+    await setDisplayBrightness(settings.screenBrightness);
+  }
+  if ((isRaspberryPi || isWindows) && settings.timezone) {
+    await setSystemTimezone(settings.timezone);
+  }
   return { ok: true, settings: saved };
 });
+
+ipcMain.handle('get-timezones', async () => {
+  cachedTimezoneOptions = getTimezoneOptions();
+  return cachedTimezoneOptions;
+});
+
+ipcMain.handle('set-system-timezone', async (_event, timezone) => {
+  return setSystemTimezone(timezone);
+});
+
+ipcMain.handle('get-system-datetime', async () => getSystemDateTimeState());
+
+ipcMain.handle('set-system-datetime', async (_event, payload) => {
+  const date = payload?.date;
+  const time = payload?.time;
+  return setSystemDateTime(date, time);
+});
+
+ipcMain.handle('sync-system-datetime', async () => syncSystemDateTime());
 
 ipcMain.handle('get-settings-path', () => getUserSettingsPath());
 
@@ -937,4 +1359,18 @@ ipcMain.handle('toggle-onboard-led', async () => {
     return { ok: false, reason: 'not-pi' };
   }
   return applyOnboardLed(!onboardLedOn);
+});
+
+// Raspberry Pi official touch display backlight (/sys/class/backlight/*-0045)
+ipcMain.handle('get-display-brightness', async () => getDisplayBrightnessState());
+
+ipcMain.handle('set-display-brightness', async (_event, level) => {
+  if (!isRaspberryPi) {
+    return {
+      ok: false,
+      reason: 'not-pi',
+      level: normalizeSavedBrightness(level, BRIGHTNESS_UI_MAX)
+    };
+  }
+  return setDisplayBrightness(level);
 });
