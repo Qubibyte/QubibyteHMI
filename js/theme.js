@@ -480,4 +480,17 @@
         themes: THEMES,
         hydrateFromDisk: hydrateThemeFromDisk
     };
+
+    (function loadOnScreenKeyboard() {
+        if (document.querySelector('script[data-qubibyte-osk-loader]')) return;
+        const ref = [...document.querySelectorAll('script[src]')].find((s) => /theme\.js/.test(s.src));
+        const src = ref
+            ? ref.src.replace(/theme\.js(?:\?.*)?$/, 'on-screen-keyboard.js')
+            : 'js/on-screen-keyboard.js';
+        const s = document.createElement('script');
+        s.src = src;
+        s.defer = true;
+        s.dataset.qubibyteOskLoader = '1';
+        document.head.appendChild(s);
+    })();
 })();

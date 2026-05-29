@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             syncThemeToEmbed(frame);
 
+            injectOskIntoIframe(frame);
+
         });
 
 
@@ -344,4 +346,18 @@ function formatTime() {
 
 }
 
+function injectOskIntoIframe(frame) {
+    if (!window.QubibyteOSK?.isEnabled?.()) return;
+    try {
+        const doc = frame.contentDocument;
+        if (!doc || doc.querySelector('script[data-qubibyte-osk]')) return;
+        const s = doc.createElement('script');
+        s.src = new URL('../js/on-screen-keyboard.js', window.location.href).href;
+        s.defer = true;
+        s.dataset.qubibyteOsk = '1';
+        doc.head.appendChild(s);
+    } catch (err) {
+        console.warn('Could not inject on-screen keyboard into embed:', err);
+    }
+}
 

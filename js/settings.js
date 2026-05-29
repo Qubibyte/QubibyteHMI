@@ -9,6 +9,7 @@ async function init() {
     setupNavigation();
     setupControls();
     await loadSettings();
+    window.QubibyteOSK?.refreshEnabled?.();
     setupBrightnessSlider();
     setupTempUnitPicker();
     await setupTimezoneSelect();
@@ -573,8 +574,17 @@ async function handleToggle(toggleId, isChecked) {
         void window.refreshHeaderInfo?.();
         return;
     }
+    if (toggleId === 'osk-toggle') {
+        window.QubibyteOSK?.refreshEnabled?.();
+        await saveSettings();
+        return;
+    }
 
     await saveSettings();
+}
+
+function defaultOnScreenKeyboard() {
+    return window.electronAPI?.isRaspberryPi ?? false;
 }
 
 function setupThemePicker() {
@@ -669,6 +679,7 @@ function collectSettings() {
         theme: document.documentElement.dataset.theme || window.QubibyteTheme?.get() || 'dark',
         fullscreen: document.getElementById('fullscreen-toggle')?.checked ?? false,
         showTemp: document.getElementById('temp-toggle')?.checked ?? true,
+        onScreenKeyboard: document.getElementById('osk-toggle')?.checked ?? defaultOnScreenKeyboard(),
         tempUnit: document.querySelector('#temp-unit-picker .unit-option.active')?.dataset.unit === 'C' ? 'C' : 'F',
         timezone: document.getElementById('timezone-select')?.value || '',
         screenBrightness: Number(document.getElementById('brightness-slider')?.value ?? BRIGHTNESS_UI_MAX),
@@ -717,6 +728,9 @@ function applySettingsToUI(settings) {
     const toggles = {
         'fullscreen-toggle': settings.fullscreen,
         'temp-toggle': settings.showTemp !== false,
+        'osk-toggle': settings.onScreenKeyboard !== undefined
+            ? settings.onScreenKeyboard
+            : defaultOnScreenKeyboard(),
         'gpu-toggle': settings.gpuAccel,
         'autostart-toggle': settings.autoStart
     };

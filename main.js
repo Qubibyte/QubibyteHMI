@@ -162,8 +162,16 @@ const DEFAULT_SETTINGS = {
   gpuAccel: true,
   autoStart: false,
   hwIp: '192.168.1.100',
-  hwPort: '8080'
+  hwPort: '8080',
+  onScreenKeyboard: undefined
 };
+
+function resolveOnScreenKeyboard(settings) {
+  if (typeof settings?.onScreenKeyboard === 'boolean') {
+    return settings.onScreenKeyboard;
+  }
+  return isRaspberryPi;
+}
 
 const BRIGHTNESS_MIN_LEVEL = 1;
 const BRIGHTNESS_UI_MAX = 31;
@@ -191,6 +199,7 @@ async function ensureUserSettingsFile() {
     await fs.access(userPath);
   } catch {
     const defaults = await loadBundledDefaults();
+    defaults.onScreenKeyboard = resolveOnScreenKeyboard(defaults);
     await fs.mkdir(path.dirname(userPath), { recursive: true });
     await fs.writeFile(userPath, JSON.stringify(defaults, null, 2), 'utf8');
     console.log(`Created user settings: ${userPath}`);
@@ -210,6 +219,7 @@ async function loadUserSettings() {
     cachedSettings = await loadBundledDefaults();
   }
 
+  cachedSettings.onScreenKeyboard = resolveOnScreenKeyboard(cachedSettings);
   return cachedSettings;
 }
 
