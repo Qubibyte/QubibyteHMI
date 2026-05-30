@@ -7,16 +7,28 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
     setupBackButton();
     setupNavigation();
-    setupControls();
+
+    applySettingsToUI(readAppSettingsFromLocal());
+
     await loadSettings();
-    window.QubibyteOSK?.refreshEnabled?.();
-    setupBrightnessSlider();
+
+    setupControls();
     setupTempUnitPicker();
     await setupTimezoneSelect();
+    setupBrightnessSlider();
     setupSystemDateTime();
     setupSystemInfo();
-    loadPlatformInfo();
+    updatePiOnlySettingsVisibility();
+    window.QubibyteOSK?.refreshEnabled?.();
     initBackgroundAnimation();
+
+    finishSettingsHydration();
+}
+
+function finishSettingsHydration() {
+    requestAnimationFrame(() => {
+        document.documentElement.classList.remove('settings-hydrating');
+    });
 }
 
 // Back button navigation
@@ -95,10 +107,13 @@ function setupControls() {
 
     // Buttons
     setupButtons();
-
+    setupResetSettings();
+    loadPlatformInfo();
 }
 
 let allTimezoneOptions = [];
+/** Last settings loaded/saved from disk — used for partial saves (toggles). */
+let persistedSettings = null;
 
 function syncTempUnitPicker(unit) {
     const picker = document.getElementById('temp-unit-picker');
@@ -115,12 +130,11 @@ function setupTempUnitPicker() {
     const picker = document.getElementById('temp-unit-picker');
     if (!picker) return;
 
-    syncTempUnitPicker('F');
-
     picker.querySelectorAll('.unit-option').forEach((btn) => {
         btn.addEventListener('click', async () => {
             syncTempUnitPicker(btn.dataset.unit);
-            await saveSettings();
+            const unit = btn.dataset.unit === 'C' ? 'C' : 'F';
+            await saveSettings({ tempUnit: unit });
             const showTemp = document.getElementById('temp-toggle')?.checked ?? true;
             window.applyHeaderInfoImmediate?.(showTemp);
             void window.refreshHeaderInfo?.();
@@ -203,12 +217,13 @@ async function setupTimezoneSelect() {
         allTimezoneOptions = [{ id: fallback, label: fallback, offsetMinutes: 0 }];
     }
 
-    const saved = readAppSettingsFromLocal();
+    const saved = persistedSettings || readAppSettingsFromLocal();
     const selected = pickTimezoneSelection(saved.timezone, allTimezoneOptions);
     renderTimezoneOptions(allTimezoneOptions, selected);
 
     select.addEventListener('change', async () => {
-        await saveSettings();
+        const tz = select.value;
+        await saveSettings({ timezone: tz });
 
         if (window.electronAPI?.setSystemTimezone) {
             try {
@@ -391,24 +406,30 @@ function normalizeBrightnessSetting(value, maxLevel = BRIGHTNESS_UI_MAX) {
     return Math.min(cap, Math.max(BRIGHTNESS_UI_MIN, Math.round(n)));
 }
 
-function configureBrightnessSlider(maxLevel = BRIGHTNESS_UI_MAX, minLevel = BRIGHTNESS_UI_MIN) {
+function configureBrightnessSlider() {
     const slider = document.getElementById('brightness-slider');
     if (!slider) return;
-    const cap = Number(maxLevel) > 0 ? Number(maxLevel) : BRIGHTNESS_UI_MAX;
-    const floor = Number(minLevel) > 0 ? Number(minLevel) : BRIGHTNESS_UI_MIN;
-    slider.min = String(floor);
-    slider.max = String(cap);
+    slider.min = String(BRIGHTNESS_UI_MIN);
+    slider.max = String(BRIGHTNESS_UI_MAX);
 }
 
-function paintBrightnessSlider(level, maxLevel) {
+function updateBrightnessRangeProgress(slider) {
+    const min = Number(slider.min) || BRIGHTNESS_UI_MIN;
+    const max = Number(slider.max) || BRIGHTNESS_UI_MAX;
+    const val = Number(slider.value);
+    const pct = max <= min ? 100 : ((val - min) / (max - min)) * 100;
+    slider.style.setProperty('--range-progress', `${pct}%`);
+}
+
+function paintBrightnessSlider(level) {
     const slider = document.getElementById('brightness-slider');
     const label = document.getElementById('brightness-value');
     if (!slider || !label) return;
-    const cap = Number(maxLevel ?? slider.max) || BRIGHTNESS_UI_MAX;
-    configureBrightnessSlider(cap);
-    const value = normalizeBrightnessSetting(level, cap);
+    configureBrightnessSlider();
+    const value = normalizeBrightnessSetting(level, BRIGHTNESS_UI_MAX);
     slider.value = String(value);
     label.textContent = String(value);
+    updateBrightnessRangeProgress(slider);
 }
 
 async function applyDisplayBrightness(level) {
@@ -506,6 +527,9 @@ function setupBrightnessSlider() {
             showNotification('Could not control display brightness.', 'error');
         }
     });
+
+    configureBrightnessSlider();
+    updateBrightnessRangeProgress(slider);
 }
 
 function setupButtons() {
@@ -570,17 +594,55 @@ async function handleToggle(toggleId, isChecked) {
     }
     if (toggleId === 'temp-toggle') {
         window.applyHeaderInfoImmediate?.(isChecked);
-        await saveSettings();
+        await saveSettings({ showTemp: isChecked });
         void window.refreshHeaderInfo?.();
         return;
     }
     if (toggleId === 'osk-toggle') {
         window.QubibyteOSK?.refreshEnabled?.();
-        await saveSettings();
+        await saveSettings({ onScreenKeyboard: isChecked });
+        return;
+    }
+    if (toggleId === 'show-cursor-toggle') {
+        await saveSettings({ showCursor: isChecked });
+        return;
+    }
+    if (toggleId === 'touch-multitouch-toggle') {
+        await saveSettings({ touchMultitouch: isChecked });
+        if (window.electronAPI?.isRaspberryPi) {
+            showNotification('Touch mode updated. Reboot if multitouch does not apply immediately.', 'info');
+        }
+        return;
+    }
+    if (toggleId === 'fullscreen-toggle') {
+        await saveSettings({ fullscreen: isChecked });
+        return;
+    }
+    if (toggleId === 'gpu-toggle') {
+        await saveSettings({ gpuAccel: isChecked });
+        return;
+    }
+    if (toggleId === 'autostart-toggle') {
+        await saveSettings({ autoStart: isChecked });
         return;
     }
 
     await saveSettings();
+}
+
+function defaultShowCursor() {
+    return !(window.electronAPI?.isRaspberryPi ?? false);
+}
+
+function defaultTouchMultitouch() {
+    return window.electronAPI?.isRaspberryPi ?? false;
+}
+
+function updatePiOnlySettingsVisibility() {
+    const onPi = Boolean(window.electronAPI?.isRaspberryPi);
+    document.querySelectorAll('.pi-only-setting').forEach((el) => {
+        el.hidden = !onPi;
+    });
 }
 
 function defaultOnScreenKeyboard() {
@@ -601,15 +663,18 @@ function setupThemePicker() {
         });
     };
 
-    const current = window.QubibyteTheme?.get() || document.documentElement.dataset.theme || 'dark';
-    setActive(current);
+    const theme = persistedSettings?.theme
+        || window.QubibyteTheme?.get()
+        || document.documentElement.dataset.theme
+        || 'dark';
+    setActive(theme);
 
     buttons.forEach((btn) => {
         btn.addEventListener('click', async () => {
             const theme = btn.dataset.theme;
             applyTheme(theme);
             setActive(theme);
-            await saveSettings();
+            await saveSettings({ theme });
         });
     });
 }
@@ -675,7 +740,7 @@ function loadPlatformInfo() {
 }
 
 function collectSettings() {
-    return {
+    const settings = {
         theme: document.documentElement.dataset.theme || window.QubibyteTheme?.get() || 'dark',
         fullscreen: document.getElementById('fullscreen-toggle')?.checked ?? false,
         showTemp: document.getElementById('temp-toggle')?.checked ?? true,
@@ -689,28 +754,59 @@ function collectSettings() {
         hwIp: document.getElementById('hw-ip')?.value ?? '192.168.1.100',
         hwPort: document.getElementById('hw-port')?.value ?? '8080'
     };
+
+    if (window.electronAPI?.isRaspberryPi) {
+        settings.touchMultitouch = document.getElementById('touch-multitouch-toggle')?.checked ?? defaultTouchMultitouch();
+    }
+
+    settings.showCursor = document.getElementById('show-cursor-toggle')?.checked ?? defaultShowCursor();
+
+    return settings;
 }
 
-async function saveSettings() {
-    const settings = collectSettings();
+async function saveSettings(patch) {
+    const settings = patch && typeof patch === 'object' && !Array.isArray(patch)
+        ? patch
+        : collectSettings();
 
     try {
-        localStorage.setItem('qubibyte-settings', JSON.stringify(settings));
+        if (patch && persistedSettings) {
+            localStorage.setItem('qubibyte-settings', JSON.stringify({ ...persistedSettings, ...settings }));
+        } else {
+            localStorage.setItem('qubibyte-settings', JSON.stringify(settings));
+        }
     } catch (e) {
         console.error('localStorage save failed:', e);
     }
 
     if (window.electronAPI?.saveSettings) {
         try {
-            await window.electronAPI.saveSettings(settings);
+            const result = await window.electronAPI.saveSettings(settings);
+            if (result?.settings) {
+                rememberPersistedSettings(result.settings);
+            } else if (!patch) {
+                rememberPersistedSettings(settings);
+            } else if (persistedSettings) {
+                rememberPersistedSettings({ ...persistedSettings, ...settings });
+            }
         } catch (e) {
             console.error('Failed to save settings file:', e);
         }
+    } else if (patch && persistedSettings) {
+        rememberPersistedSettings({ ...persistedSettings, ...settings });
+    } else if (!patch) {
+        rememberPersistedSettings(settings);
     }
+}
+
+function rememberPersistedSettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    persistedSettings = { ...settings };
 }
 
 function applySettingsToUI(settings) {
     if (!settings) return;
+    rememberPersistedSettings(settings);
 
     if (settings.theme) {
         applyTheme(settings.theme, false);
@@ -731,6 +827,14 @@ function applySettingsToUI(settings) {
         'osk-toggle': settings.onScreenKeyboard !== undefined
             ? settings.onScreenKeyboard
             : defaultOnScreenKeyboard(),
+        'show-cursor-toggle': settings.showCursor !== undefined
+            ? settings.showCursor
+            : (settings.hideCursor !== undefined
+                ? !settings.hideCursor
+                : defaultShowCursor()),
+        'touch-multitouch-toggle': settings.touchMultitouch !== undefined
+            ? settings.touchMultitouch
+            : defaultTouchMultitouch(),
         'gpu-toggle': settings.gpuAccel,
         'autostart-toggle': settings.autoStart
     };
@@ -775,11 +879,10 @@ async function syncBrightnessFromHardware() {
     if (!window.electronAPI?.getDisplayBrightness) return;
     try {
         const state = await window.electronAPI.getDisplayBrightness();
-        if (state?.maxLevel) {
-            configureBrightnessSlider(state.maxLevel, state.minLevel ?? BRIGHTNESS_UI_MIN);
-        }
         if (state?.level !== undefined) {
-            paintBrightnessSlider(state.level, state.maxLevel);
+            paintBrightnessSlider(state.level);
+        } else {
+            configureBrightnessSlider();
         }
     } catch (err) {
         console.error('Brightness sync failed:', err);
@@ -822,9 +925,115 @@ async function loadSettings() {
 
     applySettingsToUI(settings);
 
+    updatePiOnlySettingsVisibility();
+
     if (window.electronAPI?.isRaspberryPi) {
         await syncBrightnessFromHardware();
     }
+}
+
+function showConfirmDialog({ title, message, confirmText = 'Yes', cancelText = 'No' }) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay confirm-modal-overlay';
+
+        const modal = document.createElement('div');
+        modal.className = 'confirm-modal';
+        modal.setAttribute('role', 'alertdialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'confirm-modal-title');
+        modal.innerHTML = `
+            <div class="modal-header">
+                <h2 id="confirm-modal-title">${title}</h2>
+            </div>
+            <div class="modal-body">
+                <p class="confirm-modal-message">${message}</p>
+            </div>
+            <div class="modal-footer confirm-modal-footer">
+                <button type="button" class="confirm-modal-btn confirm-modal-btn--cancel">${cancelText}</button>
+                <button type="button" class="confirm-modal-btn confirm-modal-btn--confirm">${confirmText}</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.classList.add('show'), 10);
+
+        const finish = (result) => {
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 300);
+            resolve(result);
+        };
+
+        modal.querySelector('.confirm-modal-btn--cancel').addEventListener('click', () => finish(false));
+        modal.querySelector('.confirm-modal-btn--confirm').addEventListener('click', () => finish(true));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) finish(false);
+        });
+    });
+}
+
+function setupResetSettings() {
+    const btn = document.getElementById('reset-settings');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+        let platformLabel = window.electronAPI?.isRaspberryPi ? 'Raspberry Pi' : 'Windows';
+        if (window.electronAPI?.getPlatformDefaults) {
+            try {
+                const meta = await window.electronAPI.getPlatformDefaults();
+                if (meta?.platformLabel) platformLabel = meta.platformLabel;
+            } catch {
+                /* use fallback label */
+            }
+        }
+
+        const confirmed = await showConfirmDialog({
+            title: 'Reset to Defaults',
+            message: `Reset all settings to ${platformLabel} defaults? Theme, display, touch, keyboard, network, and other options will be restored. This cannot be undone.`,
+            confirmText: 'Yes',
+            cancelText: 'No'
+        });
+
+        if (!confirmed) return;
+
+        if (!window.electronAPI?.resetSettings) {
+            showNotification('Reset is only available in the desktop app.', 'info');
+            return;
+        }
+
+        try {
+            const result = await window.electronAPI.resetSettings();
+            if (!result?.ok || !result.settings) {
+                showNotification('Could not reset settings.', 'error');
+                return;
+            }
+
+            applySettingsToUI(result.settings);
+            window.QubibyteOSK?.refreshEnabled?.();
+            window.applyHeaderInfoImmediate?.(result.settings.showTemp !== false);
+            void window.refreshHeaderInfo?.();
+
+            if (window.electronAPI.isRaspberryPi) {
+                await syncBrightnessFromHardware();
+            }
+
+            if (result.settings.fullscreen !== undefined && window.electronAPI.toggleFullscreen) {
+                window.electronAPI.toggleFullscreen(Boolean(result.settings.fullscreen));
+            }
+
+            try {
+                localStorage.setItem('qubibyte-settings', JSON.stringify(result.settings));
+            } catch {
+                /* ignore */
+            }
+
+            showNotification(`${platformLabel} defaults restored`, 'success');
+        } catch (err) {
+            console.error('Reset settings failed:', err);
+            showNotification('Could not reset settings.', 'error');
+        }
+    });
 }
 
 function showLicenses() {

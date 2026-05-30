@@ -1493,7 +1493,18 @@ body {
 .settings-page {
     display: grid;
     grid-template-columns: 240px 1fr;
+    grid-template-rows: 1fr auto;
     gap: 24px;
+}
+
+html.settings-hydrating .settings-content,
+html.settings-hydrating .settings-reset-bar {
+    visibility: hidden;
+}
+
+html.settings-hydrating .toggle-slider,
+html.settings-hydrating .toggle-slider::before {
+    transition: none !important;
 }
 
 .settings-nav {
@@ -1534,11 +1545,64 @@ body {
 }
 
 .settings-content {
+    grid-column: 2;
+    grid-row: 1;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 32px 36px;
     overflow-y: auto;
+    min-height: 0;
+}
+
+.settings-reset-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 18px 24px 22px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.settings-page .settings-reset-btn {
+    min-width: 240px;
+    min-height: 48px;
+    padding: 12px 28px;
+    border-radius: 8px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background var(--transition-speed) ease,
+        border-color var(--transition-speed) ease,
+        color var(--transition-speed) ease,
+        box-shadow var(--transition-speed) ease,
+        transform 0.08s ease;
+}
+
+.settings-page .settings-reset-btn:hover {
+    background: var(--surface-overlay-medium);
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+    box-shadow: 0 4px 14px var(--shadow-color);
+}
+
+.settings-page .settings-reset-btn:active {
+    transform: scale(0.98);
+}
+
+.settings-page .settings-reset-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 3px;
 }
 
 .settings-section {
@@ -1968,8 +2032,10 @@ input:checked+.toggle-slider::before {
 /* Range Control (theme tokens: --range-track, --range-thumb, --range-thumb-border) */
 .range-control,
 .brightness-slider {
+    --range-thumb-size: 18px;
+    --range-track-height: 8px;
     width: 150px;
-    height: 8px;
+    height: var(--range-thumb-size);
     margin: 0;
     padding: 0;
     border: none;
@@ -1982,18 +2048,28 @@ input:checked+.toggle-slider::before {
 
 .range-control::-webkit-slider-runnable-track,
 .brightness-slider::-webkit-slider-runnable-track {
-    height: 8px;
+    height: var(--range-track-height);
     border-radius: 4px;
     background: var(--range-track);
     border: 1px solid var(--input-border);
 }
 
+.brightness-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(
+        to right,
+        var(--range-thumb) 0%,
+        var(--range-thumb) var(--range-progress, 0%),
+        var(--range-track) var(--range-progress, 0%),
+        var(--range-track) 100%
+    );
+}
+
 .range-control::-webkit-slider-thumb,
 .brightness-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    margin-top: -6px;
+    width: var(--range-thumb-size);
+    height: var(--range-thumb-size);
+    margin-top: calc((var(--range-track-height) - var(--range-thumb-size)) / 2);
     border-radius: 50%;
     background: var(--range-thumb);
     border: 2px solid var(--range-thumb-border);
@@ -2010,16 +2086,22 @@ input:checked+.toggle-slider::before {
 
 .range-control::-moz-range-track,
 .brightness-slider::-moz-range-track {
-    height: 8px;
+    height: var(--range-track-height);
     border-radius: 4px;
     background: var(--range-track);
     border: 1px solid var(--input-border);
 }
 
+.brightness-slider::-moz-range-progress {
+    height: var(--range-track-height);
+    border-radius: 4px 0 0 4px;
+    background: var(--range-thumb);
+}
+
 .range-control::-moz-range-thumb,
 .brightness-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: var(--range-thumb-size);
+    height: var(--range-thumb-size);
     border-radius: 50%;
     background: var(--range-thumb);
     border: 2px solid var(--range-thumb-border);
@@ -2356,6 +2438,107 @@ input:checked+.toggle-slider::before {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+.confirm-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    width: 90%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+    box-shadow: 0 24px 48px var(--shadow-color);
+}
+
+.modal-overlay.show .confirm-modal {
+    transform: translateY(0);
+}
+
+.confirm-modal .modal-header {
+    padding: 22px 24px 18px;
+}
+
+.confirm-modal .modal-header h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+}
+
+.confirm-modal .modal-body {
+    padding: 8px 24px 22px;
+}
+
+.confirm-modal-message {
+    margin: 0;
+    line-height: 1.55;
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.confirm-modal-footer {
+    justify-content: stretch;
+    gap: 12px;
+    padding: 16px 24px 22px;
+    border-top: 1px solid var(--border-color);
+    background: var(--surface-overlay-subtle);
+}
+
+.confirm-modal-btn {
+    flex: 1 1 0;
+    min-height: 48px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background var(--transition-speed) ease,
+        border-color var(--transition-speed) ease,
+        color var(--transition-speed) ease,
+        box-shadow var(--transition-speed) ease,
+        transform 0.08s ease;
+}
+
+.confirm-modal-btn--cancel {
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-primary);
+}
+
+.confirm-modal-btn--cancel:hover {
+    background: var(--surface-overlay-medium);
+    border-color: var(--border-color);
+}
+
+.confirm-modal-btn--confirm {
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--accent-orange);
+}
+
+.confirm-modal-btn--confirm:hover {
+    background: var(--surface-overlay-medium);
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+    box-shadow: 0 4px 14px var(--shadow-color);
+}
+
+.confirm-modal-btn:active {
+    transform: scale(0.98);
+}
+
+.confirm-modal-btn:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 3px;
 }
 
 .lesson-content h3 {

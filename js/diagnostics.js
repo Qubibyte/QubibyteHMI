@@ -407,7 +407,6 @@ function setupPiLedToggle() {
     const paint = (on) => {
         btn.classList.toggle('led-on', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-        btn.textContent = on ? 'LED ON' : 'LED OFF';
     };
 
     const syncState = async () => {
@@ -423,6 +422,19 @@ function setupPiLedToggle() {
     if (window.electronAPI?.isRaspberryPi) {
         syncState();
     }
+
+    const ledErrorMessage = (result) => {
+        if (result?.reason === 'permission-denied') {
+            return 'LED control needs permission. Add your user to the led group and re-login (see BUILD_INSTRUCTIONS).';
+        }
+        if (result?.reason === 'no-led') {
+            return 'No onboard activity LED found on this device.';
+        }
+        if (result?.reason === 'read-failed') {
+            return 'Could not read the onboard LED state.';
+        }
+        return 'Could not control onboard LED.';
+    };
 
     const handler = async (e) => {
         e.preventDefault();
@@ -442,7 +454,7 @@ function setupPiLedToggle() {
             if (result?.ok) {
                 paint(Boolean(result.on));
             } else {
-                showNotification('Could not control onboard LED.', 'error');
+                showNotification(ledErrorMessage(result), 'error');
             }
         } catch (err) {
             console.error('LED toggle failed:', err);

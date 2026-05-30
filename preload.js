@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Persistent settings (survives reboot — stored in userData/settings.json)
   getSettings: () => ipcRenderer.invoke('get-settings'),
+  getPlatformDefaults: () => ipcRenderer.invoke('get-platform-defaults'),
+  resetSettings: () => ipcRenderer.invoke('reset-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
   getLocalHttpOrigin: () => ipcRenderer.invoke('get-local-http-origin'),

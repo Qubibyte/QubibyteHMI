@@ -971,13 +971,18 @@ html.osk-open body {
         if (!enabled || !isTextField(el)) return;
         buildDom();
         syncOskThemeSurfaces();
+
+        const reopening = !visible || activeEl !== el;
         activeEl = el;
         numericMode = wantsNumeric(el);
-        capsLockOn = false;
-        shiftSticky = false;
-        lastShiftTap = 0;
-        if (numericMode) {
-            symbolsOn = false;
+
+        if (reopening) {
+            capsLockOn = false;
+            shiftSticky = false;
+            lastShiftTap = 0;
+            if (numericMode) {
+                symbolsOn = false;
+            }
         }
         syncPreviewListeners(el);
         renderKeys();
@@ -1008,6 +1013,9 @@ html.osk-open body {
             root.hidden = true;
             visible = false;
             activeEl = null;
+            capsLockOn = false;
+            shiftSticky = false;
+            lastShiftTap = 0;
         };
         if (immediate) {
             done();
@@ -1161,6 +1169,15 @@ html.osk-open body {
             return;
         }
 
+        if (shiftSticky) {
+            capsLockOn = true;
+            shiftSticky = false;
+            lastShiftTap = 0;
+            renderKeys();
+            refocusActive();
+            return;
+        }
+
         if (lastShiftTap && now - lastShiftTap < SHIFT_DOUBLE_TAP_MS) {
             capsLockOn = true;
             shiftSticky = false;
@@ -1187,6 +1204,7 @@ html.osk-open body {
         const el = e.target;
         if (!isTextField(el) || el.readOnly || el.disabled) return;
         clearTimeout(hideTimer);
+        if (visible && activeEl === el) return;
         showFor(el);
     }
 

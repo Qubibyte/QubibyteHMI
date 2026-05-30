@@ -163,14 +163,65 @@ const DEFAULT_SETTINGS = {
   autoStart: false,
   hwIp: '192.168.1.100',
   hwPort: '8080',
-  onScreenKeyboard: undefined
+  onScreenKeyboard: undefined,
+  showCursor: undefined,
+  hideCursor: undefined,
+  touchMultitouch: undefined
 };
+
+const CURSOR_HIDE_CSS_KEY = 'qubibyte-hide-cursor';
+const CURSOR_SHOW_CSS_KEY = 'qubibyte-show-cursor';
+const LABWC_SYSTEM_RC = '/etc/xdg/labwc/rc.xml';
 
 function resolveOnScreenKeyboard(settings) {
   if (typeof settings?.onScreenKeyboard === 'boolean') {
     return settings.onScreenKeyboard;
   }
   return isRaspberryPi;
+}
+
+function resolveShowCursor(settings) {
+  if (typeof settings?.showCursor === 'boolean') {
+    return settings.showCursor;
+  }
+  if (typeof settings?.hideCursor === 'boolean') {
+    return !settings.hideCursor;
+  }
+  return !isRaspberryPi;
+}
+
+function resolveTouchMultitouch(settings) {
+  if (typeof settings?.touchMultitouch === 'boolean') {
+    return settings.touchMultitouch;
+  }
+  return isRaspberryPi;
+}
+
+function resolvePlatformSettings(settings) {
+  const resolved = { ...settings };
+  resolved.onScreenKeyboard = resolveOnScreenKeyboard(resolved);
+  resolved.showCursor = resolveShowCursor(resolved);
+  resolved.touchMultitouch = resolveTouchMultitouch(resolved);
+  delete resolved.hideCursor;
+  return resolved;
+}
+
+async function getPlatformDefaultSettings() {
+  const bundled = await loadBundledDefaults();
+  if (isRaspberryPi) {
+    return {
+      ...bundled,
+      onScreenKeyboard: true,
+      showCursor: false,
+      touchMultitouch: true
+    };
+  }
+  return {
+    ...bundled,
+    onScreenKeyboard: false,
+    showCursor: true,
+    touchMultitouch: false
+  };
 }
 
 const BRIGHTNESS_MIN_LEVEL = 1;
@@ -198,8 +249,7 @@ async function ensureUserSettingsFile() {
   try {
     await fs.access(userPath);
   } catch {
-    const defaults = await loadBundledDefaults();
-    defaults.onScreenKeyboard = resolveOnScreenKeyboard(defaults);
+    const defaults = resolvePlatformSettings(await getPlatformDefaultSettings());
     await fs.mkdir(path.dirname(userPath), { recursive: true });
     await fs.writeFile(userPath, JSON.stringify(defaults, null, 2), 'utf8');
     console.log(`Created user settings: ${userPath}`);
@@ -213,13 +263,15 @@ async function loadUserSettings() {
 
   try {
     const raw = await fs.readFile(getUserSettingsPath(), 'utf8');
-    cachedSettings = { ...(await loadBundledDefaults()), ...JSON.parse(raw) };
+    cachedSettings = resolvePlatformSettings({
+      ...(await getPlatformDefaultSettings()),
+      ...JSON.parse(raw)
+    });
   } catch (error) {
     console.error('Error reading user settings, using defaults:', error);
-    cachedSettings = await loadBundledDefaults();
+    cachedSettings = resolvePlatformSettings(await getPlatformDefaultSettings());
   }
 
-  cachedSettings.onScreenKeyboard = resolveOnScreenKeyboard(cachedSettings);
   return cachedSettings;
 }
 
@@ -232,14 +284,135 @@ function broadcastSettingsUpdated() {
 }
 
 async function saveUserSettings(settings) {
-  const merged = { ...(await loadUserSettings()), ...settings };
+  const previous = await loadUserSettings();
+  const merged = resolvePlatformSettings({ ...previous, ...settings });
   cachedSettings = merged;
   await fs.mkdir(path.dirname(getUserSettingsPath()), { recursive: true });
   await fs.writeFile(getUserSettingsPath(), JSON.stringify(merged, null, 2), 'utf8');
   console.log(`Saved user settings: ${getUserSettingsPath()}`);
   broadcastThemeToAllWindows(merged.theme);
   broadcastSettingsUpdated();
+  if (merged.showCursor !== previous.showCursor) {
+    await applyShowCursorSetting(merged.showCursor);
+  }
+  if (isRaspberryPi && merged.touchMultitouch !== previous.touchMultitouch) {
+    await applyTouchMultitouch(merged.touchMultitouch);
+  }
   return merged;
+}
+
+async function applyShowCursorToContents(contents, show) {
+  if (!contents || contents.isDestroyed()) return;
+  try {
+    await contents.removeInsertedCSS(CURSOR_HIDE_CSS_KEY);
+  } catch {
+    /* not hidden */
+  }
+  try {
+    await contents.removeInsertedCSS(CURSOR_SHOW_CSS_KEY);
+  } catch {
+    /* not shown */
+  }
+  if (show) {
+    try {
+      await contents.insertCSS('html, body, * { cursor: revert !important; }', { cssOrigin: CURSOR_SHOW_CSS_KEY });
+    } catch (err) {
+      console.warn('Could not restore cursor CSS:', err.message);
+    }
+    return;
+  }
+  try {
+    await contents.insertCSS('html, body, * { cursor: none !important; }', { cssOrigin: CURSOR_HIDE_CSS_KEY });
+  } catch (err) {
+    console.warn('Could not hide cursor CSS:', err.message);
+  }
+}
+
+async function applyShowCursorSetting(show) {
+  const { webContents } = require('electron');
+  for (const wc of webContents.getAllWebContents()) {
+    if (!wc || wc.isDestroyed()) continue;
+    const url = wc.getURL() || '';
+    if (url.startsWith('devtools://')) continue;
+    await applyShowCursorToContents(wc, show);
+  }
+}
+
+function setTouchMouseEmulationInXml(xml, mouseEmulationOn) {
+  const val = mouseEmulationOn ? 'yes' : 'no';
+  let out = xml.replace(/(<touch[^>]*\s)mouseEmulation="(yes|no)"/gi, `$1mouseEmulation="${val}"`);
+  out = out.replace(/<mouseEmulation>\s*(yes|no)\s*<\/mouseEmulation>/gi, `<mouseEmulation>${val}</mouseEmulation>`);
+  return out;
+}
+
+function ensureTouchMouseEmulationInXml(xml, mouseEmulationOn) {
+  const val = mouseEmulationOn ? 'yes' : 'no';
+  if (/mouseEmulation/i.test(xml)) {
+    return setTouchMouseEmulationInXml(xml, mouseEmulationOn);
+  }
+  if (/<labwc_config/i.test(xml)) {
+    return xml.replace(
+      /(<labwc_config[^>]*>)/i,
+      `$1\n  <touch mouseEmulation="${val}"/>`
+    );
+  }
+  return `<?xml version="1.0"?>\n<labwc_config>\n  <touch mouseEmulation="${val}"/>\n</labwc_config>\n`;
+}
+
+function getLabwcUserRcPath() {
+  return path.join(app.getPath('home'), '.config', 'labwc', 'rc.xml');
+}
+
+async function applyTouchMultitouch(multitouch) {
+  if (!isRaspberryPi) {
+    return { ok: false, reason: 'not-pi' };
+  }
+
+  const mouseEmulationOn = !multitouch;
+  const userRcPath = getLabwcUserRcPath();
+  let xml = '';
+
+  try {
+    xml = await fs.readFile(userRcPath, 'utf8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn('Could not read labwc user rc.xml:', err.message);
+    }
+    try {
+      xml = await fs.readFile(LABWC_SYSTEM_RC, 'utf8');
+    } catch (sysErr) {
+      if (sysErr.code !== 'ENOENT') {
+        console.warn('Could not read labwc system rc.xml:', sysErr.message);
+      }
+      xml = '';
+    }
+  }
+
+  const updated = ensureTouchMouseEmulationInXml(xml, mouseEmulationOn);
+  try {
+    await fs.mkdir(path.dirname(userRcPath), { recursive: true });
+    await fs.writeFile(userRcPath, updated, 'utf8');
+    console.log(`labwc touch mouseEmulation=${mouseEmulationOn ? 'yes' : 'no'} → ${userRcPath}`);
+  } catch (err) {
+    console.error('Could not write labwc rc.xml:', err);
+    return { ok: false, reason: err.message };
+  }
+
+  try {
+    await execFileAsync('killall', ['-SIGHUP', 'labwc'], { timeout: 5000 });
+  } catch {
+    /* labwc may not be running in dev */
+  }
+
+  return { ok: true, mouseEmulation: mouseEmulationOn ? 'yes' : 'no' };
+}
+
+async function applySavedInputSettings() {
+  const settings = cachedSettings || (await loadUserSettings());
+  await applyShowCursorSetting(settings.showCursor);
+  if (isRaspberryPi) {
+    await applyTouchMultitouch(settings.touchMultitouch);
+  }
 }
 
 function getCurrentTheme() {
@@ -338,6 +511,8 @@ async function resolveLedPath() {
   if (ledBasePath) return ledBasePath;
   try {
     const entries = await fs.readdir('/sys/class/leds');
+    if (!entries.length) return null;
+
     for (const preferred of LED_NAME_PRIORITY) {
       const match = entries.find((name) => name.toUpperCase() === preferred.toUpperCase());
       if (match) {
@@ -345,11 +520,22 @@ async function resolveLedPath() {
         return ledBasePath;
       }
     }
-    const act = entries.find((name) => /act/i.test(name));
+
+    const actExact = entries.find((name) => /(^|:)act$/i.test(name));
+    if (actExact) {
+      ledBasePath = `/sys/class/leds/${actExact}`;
+      return ledBasePath;
+    }
+
+    const act = entries.find(
+      (name) => /act/i.test(name) && !/keyboard|kbd|caps|num|scroll|mute/i.test(name)
+    );
     if (act) {
       ledBasePath = `/sys/class/leds/${act}`;
       return ledBasePath;
     }
+
+    console.warn('Onboard LED not found. Available sysfs LEDs:', entries.join(', '));
   } catch (error) {
     console.error('Could not enumerate onboard LEDs:', error);
   }
@@ -374,6 +560,27 @@ function brightnessForOnboardLed(on, max) {
   return on ? String(max) : '0';
 }
 
+function isLedBrightnessOn(brightness, max) {
+  if (max === 1) {
+    return brightness === 0;
+  }
+  return brightness > 0;
+}
+
+async function readOnboardLedFromHardware(base) {
+  if (!base) return null;
+  try {
+    const max = await readLedMaxBrightness(base);
+    const raw = await fs.readFile(`${base}/brightness`, 'utf8');
+    const brightness = parseInt(raw.trim(), 10);
+    if (!Number.isFinite(brightness)) return null;
+    return isLedBrightnessOn(brightness, max);
+  } catch (error) {
+    console.error('Failed to read onboard LED brightness:', error);
+    return null;
+  }
+}
+
 async function applyOnboardLed(on) {
   const base = await resolveLedPath();
   if (!base) {
@@ -386,13 +593,31 @@ async function applyOnboardLed(on) {
   try {
     await fs.writeFile(`${base}/trigger`, 'none');
     await fs.writeFile(`${base}/brightness`, brightness);
-    onboardLedOn = on;
-    console.log(`Onboard LED ${on ? 'on' : 'off'} (${base}, brightness ${brightness})`);
-    return { ok: true, on };
+    const verified = await readOnboardLedFromHardware(base);
+    onboardLedOn = verified !== null ? verified : on;
+    console.log(`Onboard LED ${onboardLedOn ? 'on' : 'off'} (${base}, brightness ${brightness})`);
+    return { ok: true, on: onboardLedOn };
   } catch (error) {
     console.error('Failed to set onboard LED:', error);
-    return { ok: false, reason: error.message };
+    const reason = error.code === 'EACCES' || error.code === 'EPERM'
+      ? 'permission-denied'
+      : error.message;
+    return { ok: false, reason };
   }
+}
+
+async function toggleOnboardLed() {
+  const base = await resolveLedPath();
+  if (!base) {
+    return { ok: false, reason: 'no-led' };
+  }
+
+  const currentlyOn = await readOnboardLedFromHardware(base);
+  if (currentlyOn === null) {
+    return { ok: false, reason: 'read-failed' };
+  }
+
+  return applyOnboardLed(!currentlyOn);
 }
 
 async function ensureOnboardLedOff() {
@@ -510,11 +735,12 @@ async function getDisplayBrightnessState() {
   try {
     const max = await readBacklightMax(base);
     const raw = await readBacklightRaw(base);
+    const uiMax = Math.min(max, BRIGHTNESS_UI_MAX);
     return {
       ok: true,
-      level: rawToLevel(raw, max),
+      level: rawToLevel(raw, uiMax),
       minLevel: BRIGHTNESS_MIN_LEVEL,
-      maxLevel: max,
+      maxLevel: BRIGHTNESS_UI_MAX,
       raw,
       available: true,
       path: base
@@ -546,7 +772,8 @@ async function setDisplayBrightness(level) {
 
   try {
     const max = await readBacklightMax(base);
-    const raw = clampBrightnessLevel(level, max);
+    const uiLevel = clampBrightnessLevel(level, BRIGHTNESS_UI_MAX);
+    const raw = clampBrightnessLevel(uiLevel, max);
     await fs.writeFile(`${base}/brightness`, String(raw));
     console.log(`Display brightness level ${raw}/${max} via ${base}`);
     return { ok: true, level: raw, max };
@@ -645,15 +872,17 @@ function createWindow() {
       : primaryDisplay.workAreaSize;
     mainWindow.setBounds({ width, height, x: 0, y: 0 });
 
-    // Hide cursor in fullscreen/kiosk mode (all platforms)
-    mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.insertCSS('* { cursor: none !important; }');
-    });
-
     console.log(`Screen dimensions: ${width} x ${height} (fullscreen mode)`);
   }
 
   mainWindow.loadURL(appendThemeQuery('qubibyte://local/hmi/index.html', getCurrentTheme()));
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    applyShowCursorToContents(
+      mainWindow.webContents,
+      resolveShowCursor(cachedSettings || {})
+    ).catch(() => {});
+  });
 
   mainWindow.once('ready-to-show', () => {
     if (isProduction) {
@@ -680,6 +909,11 @@ app.on('web-contents-created', (_event, contents) => {
   applyThemeToWebContents(contents, getCurrentTheme());
   installDevToolsGuards(contents);
   installProductionInputGuards(contents);
+
+  contents.on('did-finish-load', () => {
+    applyShowCursorToContents(contents, resolveShowCursor(cachedSettings || {}))
+      .catch(() => {});
+  });
 
   contents.setWindowOpenHandler(({ url }) => {
     if (!url) return { action: 'deny' };
@@ -873,6 +1107,7 @@ app.whenReady().then(async () => {
   await ensureOnboardLedOff();
   await applySavedDisplayBrightness();
   await applySavedSystemTimezone();
+  await applySavedInputSettings();
   createWindow();
 
   app.on('activate', () => {
@@ -1262,17 +1497,47 @@ ipcMain.handle('get-screen-size', () => {
 // Persistent settings (config/settings.default.json → userData/settings.json)
 ipcMain.handle('get-settings', async () => loadUserSettings());
 
+ipcMain.handle('get-platform-defaults', async () => ({
+  platform: isRaspberryPi ? 'pi' : 'windows',
+  platformLabel: isRaspberryPi ? 'Raspberry Pi' : 'Windows',
+  settings: resolvePlatformSettings(await getPlatformDefaultSettings())
+}));
+
+ipcMain.handle('reset-settings', async () => {
+  cachedSettings = null;
+  const defaults = resolvePlatformSettings(await getPlatformDefaultSettings());
+  cachedSettings = defaults;
+  await fs.mkdir(path.dirname(getUserSettingsPath()), { recursive: true });
+  await fs.writeFile(getUserSettingsPath(), JSON.stringify(defaults, null, 2), 'utf8');
+  console.log('Reset settings to platform defaults');
+  broadcastThemeToAllWindows(defaults.theme);
+  broadcastSettingsUpdated();
+  await applyShowCursorSetting(defaults.showCursor);
+  if (isRaspberryPi) {
+    if (defaults.screenBrightness !== undefined) {
+      await setDisplayBrightness(defaults.screenBrightness);
+    }
+    await applyTouchMultitouch(defaults.touchMultitouch);
+  }
+  if ((isRaspberryPi || isWindows) && defaults.timezone) {
+    await setSystemTimezone(defaults.timezone);
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && typeof defaults.fullscreen === 'boolean') {
+    mainWindow.setFullScreen(defaults.fullscreen);
+  }
+  return {
+    ok: true,
+    platform: isRaspberryPi ? 'pi' : 'windows',
+    platformLabel: isRaspberryPi ? 'Raspberry Pi' : 'Windows',
+    settings: defaults
+  };
+});
+
 ipcMain.handle('save-settings', async (event, settings) => {
   if (!settings || typeof settings !== 'object') {
     return { ok: false, reason: 'invalid-settings' };
   }
   const saved = await saveUserSettings(settings);
-  if (isRaspberryPi && settings.screenBrightness !== undefined) {
-    await setDisplayBrightness(settings.screenBrightness);
-  }
-  if ((isRaspberryPi || isWindows) && settings.timezone) {
-    await setSystemTimezone(settings.timezone);
-  }
   return { ok: true, settings: saved };
 });
 
@@ -1354,7 +1619,12 @@ ipcMain.handle('get-onboard-led-state', async () => {
   if (!base) {
     return { ok: false, reason: 'no-led', on: false };
   }
-  return { ok: true, on: onboardLedOn };
+  const on = await readOnboardLedFromHardware(base);
+  if (on === null) {
+    return { ok: false, reason: 'read-failed', on: onboardLedOn };
+  }
+  onboardLedOn = on;
+  return { ok: true, on };
 });
 
 ipcMain.handle('set-onboard-led', async (_event, on) => {
@@ -1368,7 +1638,7 @@ ipcMain.handle('toggle-onboard-led', async () => {
   if (!isRaspberryPi) {
     return { ok: false, reason: 'not-pi' };
   }
-  return applyOnboardLed(!onboardLedOn);
+  return toggleOnboardLed();
 });
 
 // Raspberry Pi official touch display backlight (/sys/class/backlight/*-0045)
