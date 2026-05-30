@@ -8,6 +8,6 @@
   "animationSpeed": "1",
   "gpuAccel": true,
   "autoStart": false,
-  "hwIp": "192.168.1.100",
+  "hwIp": "",
   "hwPort": "8080"
 }

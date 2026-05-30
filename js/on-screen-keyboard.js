@@ -861,6 +861,40 @@ html.osk-open body {
         });
     }
 
+    let lastTouchActivateAt = 0;
+
+    function shouldIgnoreGhostClick() {
+        return Date.now() - lastTouchActivateAt < 500;
+    }
+
+    function onKeyActivate(e) {
+        const btn = e.target.closest('.osk-key');
+        if (!btn || !root?.contains(btn)) return;
+        if (e.type === 'click' && shouldIgnoreGhostClick()) return;
+        if (e.type === 'touchend') {
+            e.preventDefault();
+            e.stopPropagation();
+            lastTouchActivateAt = Date.now();
+        }
+        btn.classList.add('is-pressed');
+        global.setTimeout(() => btn.classList.remove('is-pressed'), 120);
+        handleToken(btn.dataset.token);
+    }
+
+    function onNavActivate(e) {
+        const btn = e.target.closest('[data-nav]');
+        if (!btn || !previewNav?.contains(btn)) return;
+        if (e.type === 'click' && shouldIgnoreGhostClick()) return;
+        if (e.type === 'touchend') {
+            e.preventDefault();
+            e.stopPropagation();
+            lastTouchActivateAt = Date.now();
+        }
+        btn.classList.add('is-pressed');
+        global.setTimeout(() => btn.classList.remove('is-pressed'), 120);
+        handleNavAction(btn.dataset.nav);
+    }
+
     function buildDom() {
         if (root) return;
         injectStyles();
@@ -930,13 +964,8 @@ html.osk-open body {
         preview.appendChild(previewBody);
         stack.appendChild(preview);
 
-        previewNav.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-nav]');
-            if (!btn) return;
-            btn.classList.add('is-pressed');
-            global.setTimeout(() => btn.classList.remove('is-pressed'), 120);
-            handleNavAction(btn.dataset.nav);
-        });
+        previewNav.addEventListener('click', onNavActivate);
+        previewNav.addEventListener('touchend', onNavActivate, { passive: false });
 
         panel = global.document.createElement('div');
         panel.className = 'osk-panel';
@@ -947,13 +976,8 @@ html.osk-open body {
         root.addEventListener('mousedown', (e) => e.preventDefault());
         root.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
-        root.addEventListener('click', (e) => {
-            const btn = e.target.closest('.osk-key');
-            if (!btn) return;
-            btn.classList.add('is-pressed');
-            global.setTimeout(() => btn.classList.remove('is-pressed'), 120);
-            handleToken(btn.dataset.token);
-        });
+        root.addEventListener('click', onKeyActivate);
+        root.addEventListener('touchend', onKeyActivate, { passive: false });
 
         global.document.body.appendChild(root);
         syncOskThemeSurfaces();

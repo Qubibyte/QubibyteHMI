@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, protocol, net, session, Menu } = require('electron');
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const fs = require('fs').promises;
 const fsSync = require('fs');
@@ -161,7 +162,7 @@ const DEFAULT_SETTINGS = {
   animationSpeed: '1',
   gpuAccel: true,
   autoStart: false,
-  hwIp: '192.168.1.100',
+  hwIp: '',
   hwPort: '8080',
   onScreenKeyboard: undefined,
   showCursor: undefined,
@@ -172,6 +173,47 @@ const DEFAULT_SETTINGS = {
 const CURSOR_HIDE_CSS_KEY = 'qubibyte-hide-cursor';
 const CURSOR_SHOW_CSS_KEY = 'qubibyte-show-cursor';
 const LABWC_SYSTEM_RC = '/etc/xdg/labwc/rc.xml';
+const LEGACY_PLACEHOLDER_IPS = new Set(['192.168.1.100']);
+const CURSOR_HIDE_CSS = 'html, body, *, *::before, *::after, canvas, iframe, embed { cursor: none !important; }';
+
+const NETWORK_IFACE_PREFERENCE = ['wlan0', 'eth0', 'end0', 'en0', 'en1', 'enp', 'wlp'];
+
+function detectPrimaryIPv4() {
+  const nets = os.networkInterfaces();
+  const seen = new Set();
+  const candidates = [];
+
+  const addCandidate = (name, net) => {
+    if (!net || net.internal || net.family !== 'IPv4') return;
+    const address = String(net.address || '').trim();
+    if (!address || seen.has(address)) return;
+    seen.add(address);
+    candidates.push({ name, address });
+  };
+
+  for (const preferred of NETWORK_IFACE_PREFERENCE) {
+    for (const [name, entries] of Object.entries(nets)) {
+      if (preferred.endsWith('p') ? name.startsWith(preferred) : name === preferred) {
+        for (const net of entries || []) addCandidate(name, net);
+      }
+    }
+  }
+
+  for (const [name, entries] of Object.entries(nets)) {
+    for (const net of entries || []) addCandidate(name, net);
+  }
+
+  return candidates[0]?.address || '127.0.0.1';
+}
+
+function isPlaceholderHwIp(ip) {
+  const value = typeof ip === 'string' ? ip.trim() : '';
+  return !value || LEGACY_PLACEHOLDER_IPS.has(value);
+}
+
+function resolveHwIp(ip) {
+  return isPlaceholderHwIp(ip) ? detectPrimaryIPv4() : String(ip).trim();
+}
 
 function resolveOnScreenKeyboard(settings) {
   if (typeof settings?.onScreenKeyboard === 'boolean') {
@@ -211,6 +253,7 @@ async function getPlatformDefaultSettings() {
   if (isRaspberryPi) {
     return {
       ...bundled,
+      fullscreen: true,
       onScreenKeyboard: true,
       showCursor: false,
       touchMultitouch: true
@@ -250,6 +293,7 @@ async function ensureUserSettingsFile() {
     await fs.access(userPath);
   } catch {
     const defaults = resolvePlatformSettings(await getPlatformDefaultSettings());
+    defaults.hwIp = detectPrimaryIPv4();
     await fs.mkdir(path.dirname(userPath), { recursive: true });
     await fs.writeFile(userPath, JSON.stringify(defaults, null, 2), 'utf8');
     console.log(`Created user settings: ${userPath}`);
@@ -263,13 +307,25 @@ async function loadUserSettings() {
 
   try {
     const raw = await fs.readFile(getUserSettingsPath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    let migrated = false;
+    if (isPlaceholderHwIp(parsed.hwIp)) {
+      parsed.hwIp = detectPrimaryIPv4();
+      migrated = true;
+    }
     cachedSettings = resolvePlatformSettings({
       ...(await getPlatformDefaultSettings()),
-      ...JSON.parse(raw)
+      ...parsed
     });
+    cachedSettings.hwIp = resolveHwIp(cachedSettings.hwIp);
+    if (migrated) {
+      await fs.mkdir(path.dirname(getUserSettingsPath()), { recursive: true });
+      await fs.writeFile(getUserSettingsPath(), JSON.stringify(cachedSettings, null, 2), 'utf8');
+    }
   } catch (error) {
     console.error('Error reading user settings, using defaults:', error);
     cachedSettings = resolvePlatformSettings(await getPlatformDefaultSettings());
+    cachedSettings.hwIp = resolveHwIp(cachedSettings.hwIp);
   }
 
   return cachedSettings;
@@ -286,6 +342,9 @@ function broadcastSettingsUpdated() {
 async function saveUserSettings(settings) {
   const previous = await loadUserSettings();
   const merged = resolvePlatformSettings({ ...previous, ...settings });
+  if (isPlaceholderHwIp(merged.hwIp)) {
+    merged.hwIp = detectPrimaryIPv4();
+  }
   cachedSettings = merged;
   await fs.mkdir(path.dirname(getUserSettingsPath()), { recursive: true });
   await fs.writeFile(getUserSettingsPath(), JSON.stringify(merged, null, 2), 'utf8');
@@ -314,18 +373,19 @@ async function applyShowCursorToContents(contents, show) {
     /* not shown */
   }
   if (show) {
-    try {
-      await contents.insertCSS('html, body, * { cursor: revert !important; }', { cssOrigin: CURSOR_SHOW_CSS_KEY });
-    } catch (err) {
-      console.warn('Could not restore cursor CSS:', err.message);
-    }
     return;
   }
   try {
-    await contents.insertCSS('html, body, * { cursor: none !important; }', { cssOrigin: CURSOR_HIDE_CSS_KEY });
+    await contents.insertCSS(CURSOR_HIDE_CSS, { cssOrigin: CURSOR_HIDE_CSS_KEY });
   } catch (err) {
     console.warn('Could not hide cursor CSS:', err.message);
   }
+}
+
+function scheduleCursorReapply(contents) {
+  if (!contents || contents.isDestroyed()) return;
+  const show = resolveShowCursor(cachedSettings || {});
+  applyShowCursorToContents(contents, show).catch(() => {});
 }
 
 async function applyShowCursorSetting(show) {
@@ -878,10 +938,10 @@ function createWindow() {
   mainWindow.loadURL(appendThemeQuery('qubibyte://local/hmi/index.html', getCurrentTheme()));
 
   mainWindow.webContents.on('did-finish-load', () => {
-    applyShowCursorToContents(
-      mainWindow.webContents,
-      resolveShowCursor(cachedSettings || {})
-    ).catch(() => {});
+    scheduleCursorReapply(mainWindow.webContents);
+  });
+  mainWindow.webContents.on('did-frame-finish-load', () => {
+    scheduleCursorReapply(mainWindow.webContents);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -911,8 +971,10 @@ app.on('web-contents-created', (_event, contents) => {
   installProductionInputGuards(contents);
 
   contents.on('did-finish-load', () => {
-    applyShowCursorToContents(contents, resolveShowCursor(cachedSettings || {}))
-      .catch(() => {});
+    scheduleCursorReapply(contents);
+  });
+  contents.on('did-frame-finish-load', () => {
+    scheduleCursorReapply(contents);
   });
 
   contents.setWindowOpenHandler(({ url }) => {
@@ -1522,8 +1584,12 @@ ipcMain.handle('reset-settings', async () => {
   if ((isRaspberryPi || isWindows) && defaults.timezone) {
     await setSystemTimezone(defaults.timezone);
   }
-  if (mainWindow && !mainWindow.isDestroyed() && typeof defaults.fullscreen === 'boolean') {
-    mainWindow.setFullScreen(defaults.fullscreen);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const useFullscreen = isRaspberryPi ? true : Boolean(defaults.fullscreen);
+    mainWindow.setFullScreen(useFullscreen);
+    if (isRaspberryPi && useFullscreen) {
+      mainWindow.setKiosk(true);
+    }
   }
   return {
     ok: true,
@@ -1563,6 +1629,14 @@ ipcMain.handle('sync-system-datetime', async () => syncSystemDateTime());
 ipcMain.handle('get-settings-path', () => getUserSettingsPath());
 
 ipcMain.handle('get-local-http-origin', () => localWebsiteHttpOrigin);
+
+ipcMain.handle('get-local-network-ip', () => detectPrimaryIPv4());
+
+ipcMain.handle('reapply-show-cursor', async () => {
+  const settings = await loadUserSettings();
+  await applyShowCursorSetting(settings.showCursor);
+  return { ok: true };
+});
 
 ipcMain.handle('set-app-theme', async (_event, theme) => {
   const t = normalizeTheme(theme);

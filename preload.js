@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettingsPath: () => ipcRenderer.invoke('get-settings-path'),
   getLocalHttpOrigin: () => ipcRenderer.invoke('get-local-http-origin'),
+  getLocalNetworkIp: () => ipcRenderer.invoke('get-local-network-ip'),
+  reapplyShowCursor: () => ipcRenderer.invoke('reapply-show-cursor'),
   setAppTheme: (theme) => ipcRenderer.invoke('set-app-theme', theme),
   onSettingsUpdated: (callback) => {
     const handler = (_event, settings) => callback(settings);

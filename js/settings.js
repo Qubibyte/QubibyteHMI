@@ -751,7 +751,7 @@ function collectSettings() {
         animationSpeed: document.getElementById('animation-speed')?.value ?? '1',
         gpuAccel: document.getElementById('gpu-toggle')?.checked ?? false,
         autoStart: document.getElementById('autostart-toggle')?.checked ?? false,
-        hwIp: document.getElementById('hw-ip')?.value ?? '192.168.1.100',
+        hwIp: document.getElementById('hw-ip')?.value?.trim() || '',
         hwPort: document.getElementById('hw-port')?.value ?? '8080'
     };
 
@@ -844,9 +844,9 @@ function applySettingsToUI(settings) {
         if (toggle) toggle.checked = Boolean(value);
     });
 
-    if (settings.hwIp) {
-        const ipInput = document.getElementById('hw-ip');
-        if (ipInput) ipInput.value = settings.hwIp;
+    const ipInput = document.getElementById('hw-ip');
+    if (ipInput && settings.hwIp !== undefined) {
+        ipInput.value = settings.hwIp;
     }
     if (settings.hwPort) {
         const portInput = document.getElementById('hw-port');
@@ -1018,8 +1018,11 @@ function setupResetSettings() {
                 await syncBrightnessFromHardware();
             }
 
-            if (result.settings.fullscreen !== undefined && window.electronAPI.toggleFullscreen) {
-                window.electronAPI.toggleFullscreen(Boolean(result.settings.fullscreen));
+            if (window.electronAPI.toggleFullscreen) {
+                const enableFullscreen = window.electronAPI.isRaspberryPi
+                    ? true
+                    : Boolean(result.settings.fullscreen);
+                window.electronAPI.toggleFullscreen(enableFullscreen);
             }
 
             try {

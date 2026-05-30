@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             injectOskIntoIframe(frame);
 
+            window.electronAPI?.reapplyShowCursor?.().catch(() => {});
+
         });
 
 
