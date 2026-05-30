@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Install or update Qubibyte HMI on Raspberry Pi (Electron arm64 build).
 # Run on the Pi: bash scripts/install-qubibyte-pi.sh
-# One-liner (after pushing to GitHub):
+# One-liner (from GitHub main):
 #   curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/main/scripts/install-qubibyte-pi.sh | bash
 
 set -euo pipefail
 
 REPO_URL="${QUBIBYTE_REPO_URL:-https://github.com/Qubibyte/QubibyteHMI.git}"
 INSTALL_DIR="${QUBIBYTE_INSTALL_DIR:-$HOME/QubibyteHMI}"
-DESKTOP_FILE="$HOME/Desktop/QubibyteHMI.desktop"
 RUN_BIN="$INSTALL_DIR/release/raspberry-pi/current/QubibyteHMI"
 
 log() { echo "[qubibyte-pi] $*"; }
@@ -17,6 +16,56 @@ die() { echo "[qubibyte-pi] ERROR: $*" >&2; exit 1; }
 if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
   log "Warning: expected ARM64 (Pi 4/5); continuing anyway."
 fi
+
+remove_qubibyte_desktop_entries() {
+  local dirs=()
+  if command -v xdg-user-dir >/dev/null 2>&1; then
+    local xdg
+    xdg="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    [[ -n "$xdg" ]] && dirs+=("$xdg")
+  fi
+  dirs+=("$HOME/Desktop" "$HOME/desktop")
+
+  local dir dest
+  for dir in "${dirs[@]}"; do
+    [[ -d "$dir" ]] || continue
+    find "$dir" -maxdepth 1 -iname '*qubibyte*.desktop' -print -delete 2>/dev/null || true
+  done
+  find "$HOME/.local/share/applications" -maxdepth 1 -iname '*qubibyte*.desktop' \
+    -print -delete 2>/dev/null || true
+}
+
+cleanup_previous_install() {
+  log "Removing old Qubibyte HMI binaries and desktop launchers..."
+
+  if pgrep -x QubibyteHMI >/dev/null 2>&1; then
+    log "Stopping running QubibyteHMI..."
+    pkill -x QubibyteHMI 2>/dev/null || true
+    sleep 1
+  fi
+
+  remove_qubibyte_desktop_entries
+
+  # Old versioned extract folders under the install tree (keep current/ until replaced below).
+  if [[ -d "$INSTALL_DIR/release/raspberry-pi" ]]; then
+    find "$INSTALL_DIR/release/raspberry-pi" -maxdepth 1 -mindepth 1 \
+      ! -name 'current' \
+      ! -name 'QubibyteHMI-*-arm64.tar.gz' \
+      -print -exec rm -rf {} + 2>/dev/null || true
+  fi
+
+  # Standalone tar.gz extracts elsewhere in $HOME.
+  find "$HOME" -maxdepth 2 -type d -name 'QubibyteHMI-*-arm64' \
+    -print -exec rm -rf {} + 2>/dev/null || true
+
+  # Stray executables outside the managed current/ path.
+  find "$HOME" -maxdepth 4 -type f -name 'QubibyteHMI' -executable \
+    ! -path "$INSTALL_DIR/release/raspberry-pi/current/*" \
+    -print -delete 2>/dev/null || true
+
+  find "$HOME" -maxdepth 3 -type f -name 'QubibyteHMI*.AppImage' \
+    -print -delete 2>/dev/null || true
+}
 
 log "Installing apt dependencies..."
 sudo apt-get update -qq
@@ -33,6 +82,11 @@ fi
 
 log "Node $(node -v) / npm $(npm -v)"
 
+if [[ -d "$INSTALL_DIR" && ! -d "$INSTALL_DIR/.git" ]]; then
+  log "Existing $INSTALL_DIR is not a git clone — removing for fresh install"
+  rm -rf "$INSTALL_DIR"
+fi
+
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   log "Updating existing clone in $INSTALL_DIR"
   cd "$INSTALL_DIR"
@@ -46,14 +100,10 @@ fi
 
 [[ -f QubibyteWebsite/index.html ]] || die "QubibyteWebsite/index.html missing. Run: git submodule update --init --recursive"
 
-log "Installing LED udev rules (optional; requires logout after first install)..."
-if [[ -f scripts/99-qubibyte-led.rules ]]; then
-  sudo cp scripts/99-qubibyte-led.rules /etc/udev/rules.d/99-qubibyte-led.rules
-  sudo groupadd -f led
-  sudo usermod -aG led "$USER" 2>/dev/null || true
-  sudo udevadm control --reload-rules
-  sudo udevadm trigger
-fi
+cleanup_previous_install
+
+log "Installing onboard LED permissions (Diagnostics LED toggle)..."
+bash "$INSTALL_DIR/scripts/setup-pi-led-permissions.sh"
 
 log "npm install..."
 npm install
@@ -70,13 +120,15 @@ mkdir -p "$EXTRACT_ROOT"
 tar -xzf "$ARTIFACT" -C "$EXTRACT_ROOT" --strip-components=1
 
 [[ -x "$RUN_BIN" ]] || die "Extracted binary missing: $RUN_BIN"
+chmod +x "$RUN_BIN"
 
 log "Pruning old Pi build artifacts..."
-find "$INSTALL_DIR/release/raspberry-pi" -maxdepth 1 -name 'QubibyteHMI-*-arm64.tar.gz' ! -newer "$ARTIFACT" -delete 2>/dev/null || true
-find "$HOME" -maxdepth 3 -type f -name 'QubibyteHMI*.AppImage' -delete 2>/dev/null || true
+find "$INSTALL_DIR/release/raspberry-pi" -maxdepth 1 -name 'QubibyteHMI-*-arm64.tar.gz' ! -newer "$ARTIFACT" \
+  -print -delete 2>/dev/null || true
 
 log "Creating desktop launcher..."
 bash "$INSTALL_DIR/scripts/fix-pi-desktop.sh"
 
 log "Done. Launch from Desktop icon QubibyteHMI or run: $RUN_BIN"
-log "Website updates: git pull && git submodule update --init --recursive (no rebuild required if only QubibyteWebsite changed)."
+log "LED: log out and back in once if Diagnostics still says permission denied."
+log "Updates: re-run this script, or: cd $INSTALL_DIR && git pull && bash scripts/install-qubibyte-pi.sh"

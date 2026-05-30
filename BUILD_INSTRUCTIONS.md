@@ -146,13 +146,11 @@ npm run dev        # same with --dev flag
 
 ## Raspberry Pi onboard LED
 
-Diagnostics page only (not main-menu logo). Requires udev (installed by `install-qubibyte-pi.sh`):
+Diagnostics page only (not main-menu logo). Installed automatically by `install-qubibyte-pi.sh` (brightness **and** trigger sysfs). Manual fix:
 
 ```bash
-sudo cp scripts/99-qubibyte-led.rules /etc/udev/rules.d/
-sudo groupadd -f led && sudo usermod -aG led $USER
-sudo udevadm control --reload-rules && sudo udevadm trigger
-# log out and back in
+bash scripts/setup-pi-led-permissions.sh
+# log out and back in once
 ```
 
 ## Auto-start (systemd)
