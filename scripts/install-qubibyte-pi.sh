@@ -2,7 +2,7 @@
 # Install or update Qubibyte HMI on Raspberry Pi (Electron arm64 build).
 # Run on the Pi: bash scripts/install-qubibyte-pi.sh
 # One-liner (from GitHub main):
-#   curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/main/scripts/install-qubibyte-pi.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/master/scripts/install-qubibyte-pi.sh | bash
 
 set -euo pipefail
 

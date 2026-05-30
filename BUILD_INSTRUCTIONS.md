@@ -79,10 +79,10 @@ cd ~/QubibyteHMI
 bash scripts/install-qubibyte-pi.sh
 ```
 
-One-liner (after the script is on `main`):
+One-liner:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/main/scripts/install-qubibyte-pi.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/master/scripts/install-qubibyte-pi.sh | bash
 ```
 
 This installs apt deps, Node 22, verifies the submodule, builds the arm64 package, creates **one** desktop icon (`~/Desktop/QubibyteHMI.desktop`), and installs optional LED udev rules.

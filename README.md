@@ -38,7 +38,7 @@ See **[BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md)** for Windows portable exe,
 ### Raspberry Pi install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/main/scripts/install-qubibyte-pi.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Qubibyte/QubibyteHMI/master/scripts/install-qubibyte-pi.sh | bash
 ```
 
 Or from a local clone: `bash scripts/install-qubibyte-pi.sh`
