@@ -138,6 +138,8 @@ npm install
 git submodule update --init --recursive
 npm start          # windowed testing (TESTING_MODE in main.js)
 npm run dev        # same with --dev flag
+
+Testing uses a **1280×720 web viewport** (`useContentSize`), matching Pi 720p layout. The outer window is slightly taller on Windows because of the title bar; the page area matches the device.
 ```
 
 - HMI pages: `qubibyte://local/hmi/…`

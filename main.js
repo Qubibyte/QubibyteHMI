@@ -904,12 +904,18 @@ function installProductionInputGuards(contents) {
 }
 
 function createWindow() {
+  const devContentWidth = 1280;
+  const devContentHeight = 720;
+
   mainWindow = new BrowserWindow({
-    width: isProduction ? 1920 : 1280,
-    height: isProduction ? 1080 : 720,
+    width: isProduction ? 1920 : devContentWidth,
+    height: isProduction ? 1080 : devContentHeight,
+    // Testing: size the web page viewport (like Pi kiosk), not outer window + title bar
+    useContentSize: !isProduction,
     fullscreen: isProduction,
     frame: !isProduction,
     kiosk: isProduction,
+    center: !isProduction,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -923,7 +929,9 @@ function createWindow() {
   });
 
   if (!isProduction) {
-    console.log('Screen dimensions: 1280 x 720 (testing mode)');
+    console.log(
+      `Testing mode content viewport: ${devContentWidth} x ${devContentHeight} (matches Pi 720p layout)`
+    );
   } else {
     const { screen } = require('electron');
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -953,6 +961,9 @@ function createWindow() {
         const { bounds } = screen.getPrimaryDisplay();
         mainWindow.setBounds(bounds);
       }
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      const [w, h] = mainWindow.getContentSize();
+      console.log(`Window client area (web viewport): ${w} x ${h}`);
     }
     mainWindow.show();
   });

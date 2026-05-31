@@ -663,10 +663,7 @@ function setupThemePicker() {
         });
     };
 
-    const theme = persistedSettings?.theme
-        || window.QubibyteTheme?.get()
-        || document.documentElement.dataset.theme
-        || 'dark';
+    const theme = resolveEffectiveTheme(persistedSettings?.theme);
     setActive(theme);
 
     buttons.forEach((btn) => {
@@ -804,12 +801,37 @@ function rememberPersistedSettings(settings) {
     persistedSettings = { ...settings };
 }
 
+function resolveEffectiveTheme(settingsTheme) {
+    const themes = ['dark', 'light', 'midnight', 'quantum'];
+    let cached = null;
+    try {
+        cached = localStorage.getItem('qubibyte-theme');
+    } catch {
+        /* ignore */
+    }
+    const current = document.documentElement.dataset.theme
+        || window.QubibyteTheme?.get?.();
+
+    if (cached && themes.includes(cached)) {
+        return cached;
+    }
+    if (settingsTheme && themes.includes(settingsTheme)) {
+        return settingsTheme;
+    }
+    if (current && themes.includes(current)) {
+        return current;
+    }
+    return 'dark';
+}
+
 function applySettingsToUI(settings) {
     if (!settings) return;
     rememberPersistedSettings(settings);
 
-    if (settings.theme) {
-        applyTheme(settings.theme, false);
+    const theme = resolveEffectiveTheme(settings.theme);
+    applyTheme(theme, false);
+    if (settings.theme && theme !== settings.theme && window.electronAPI?.saveSettings) {
+        saveSettings({ theme }).catch(() => {});
     }
 
     if (settings.animationSpeed !== undefined) {

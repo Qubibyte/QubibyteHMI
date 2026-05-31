@@ -38,7 +38,22 @@
 
     let persistThemeTimer = null;
 
+    function syncThemeToSettingsCache(theme) {
+        if (!THEMES.includes(theme)) return;
+        try {
+            const raw = localStorage.getItem('qubibyte-settings');
+            const settings = raw ? JSON.parse(raw) : {};
+            if (settings.theme !== theme) {
+                settings.theme = theme;
+                localStorage.setItem('qubibyte-settings', JSON.stringify(settings));
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
     function schedulePersistTheme(theme) {
+        syncThemeToSettingsCache(theme);
         if (!window.electronAPI?.saveSettings) return;
         clearTimeout(persistThemeTimer);
         persistThemeTimer = setTimeout(() => {
@@ -90,6 +105,7 @@
 
         try {
             localStorage.setItem(STORAGE_KEY, t);
+            syncThemeToSettingsCache(t);
         } catch (e) {
             /* ignore */
         }
@@ -116,19 +132,35 @@
         }
     }
 
-    async function hydrateThemeFromDisk() {
-        if (!window.electronAPI?.getSettings) return getTheme();
+    function resolveThemeWithDisk(diskTheme) {
+        const cached = getTheme();
+        const disk = THEMES.includes(diskTheme) ? diskTheme : null;
 
-        try {
-            const settings = await window.electronAPI.getSettings();
-            if (settings?.theme && THEMES.includes(settings.theme)) {
-                applyTheme(settings.theme);
-                return settings.theme;
+        if (THEMES.includes(cached)) {
+            if (disk && cached !== disk) {
+                schedulePersistTheme(cached);
             }
-        } catch (e) {
-            console.error('Could not load theme from settings file:', e);
+            return cached;
         }
-        return getTheme();
+        if (disk) return disk;
+        return 'dark';
+    }
+
+    async function hydrateThemeFromDisk() {
+        let diskTheme = null;
+
+        if (window.electronAPI?.getSettings) {
+            try {
+                const settings = await window.electronAPI.getSettings();
+                diskTheme = settings?.theme;
+            } catch (e) {
+                console.error('Could not load theme from settings file:', e);
+            }
+        }
+
+        const resolved = resolveThemeWithDisk(diskTheme);
+        applyTheme(resolved, { silent: true });
+        return resolved;
     }
 
     // Apply cached theme immediately, then merge from disk when Electron is ready
