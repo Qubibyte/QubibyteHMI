@@ -59,6 +59,13 @@
     --scrollbar-thumb: rgba(255, 255, 255, 0.15);
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
 
+    /* Top bar — same size on main menu and all sub-pages */
+    --top-bar-height: 80px;
+    --top-bar-padding-x: 32px;
+    --top-bar-logo-height: 48px;
+    --top-bar-system-info-size: 22px;
+    --top-bar-page-title-size: 24px;
+
     /* Typography */
     --font-primary: 'Inter', 'Segoe UI', -apple-system, sans-serif;
     --font-display: 'Khand', 'Inter', sans-serif;
@@ -585,7 +592,7 @@ body {
     z-index: 1;
 }
 
-/* Embedded apps: compact top bar (same as other sub-pages) */
+/* Embedded apps: top bar above iframe */
 .embed-body > .subpage-top-bar {
     position: relative;
     z-index: 2147483647;
@@ -600,15 +607,16 @@ body {
    TOP BAR
    ============================================ */
 .top-bar {
-    height: 80px;
+    height: var(--top-bar-height);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 32px;
+    padding: 0 var(--top-bar-padding-x);
     background: var(--top-bar-bg);
     border-bottom: 1px solid var(--border-color);
     backdrop-filter: blur(10px);
     flex-shrink: 0;
+    box-sizing: border-box;
 }
 
 .top-bar-left {
@@ -618,7 +626,7 @@ body {
 }
 
 .top-bar-logo {
-    height: 48px;
+    height: var(--top-bar-logo-height);
     width: auto;
 }
 
@@ -661,22 +669,16 @@ body {
     max-width: 45%;
 }
 
-/* Compact top bar on sub-pages (settings, embeds, calibration, etc.) — main menu stays full size */
-.subpage-top-bar {
-    height: 44px;
-    padding: 0 14px 0 16px;
-    backdrop-filter: blur(10px);
-}
-
+/* Sub-pages use the same top bar height as the main menu; layout tweaks only */
 .subpage-top-bar .top-bar-left {
-    gap: 12px;
+    gap: 24px;
     min-width: 0;
 }
 
 .subpage-top-bar .page-title {
-    font-size: 15px;
+    font-size: var(--top-bar-page-title-size);
     font-weight: 500;
-    letter-spacing: 1.2px;
+    letter-spacing: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -684,15 +686,6 @@ body {
 
 .subpage-top-bar .back-btn {
     flex-shrink: 0;
-    gap: 6px;
-    padding: 5px 11px;
-    border-radius: 6px;
-    font-size: 12px;
-    letter-spacing: 0.6px;
-}
-
-.subpage-top-bar .back-icon {
-    font-size: 11px;
 }
 
 .system-info {
@@ -700,17 +693,14 @@ body {
     align-items: baseline;
     gap: 1.15em;
     font-family: var(--font-display);
-    font-size: 22px;
+    font-size: var(--top-bar-system-info-size);
     font-weight: 500;
     color: var(--text-secondary);
     letter-spacing: 1px;
 }
 
 .subpage-top-bar .system-info {
-    font-size: 13px;
-    letter-spacing: 0.5px;
     white-space: nowrap;
-    gap: 1em;
 }
 
 /* ============================================
@@ -3277,35 +3267,12 @@ input:checked+.toggle-slider::before {
         font-size: 17px;
     }
 
-    .main-app > .top-bar {
-        height: 68px;
-        padding: 0 20px;
-    }
-
-    .top-bar-logo {
-        height: 40px;
-    }
-
-    .main-app > .top-bar .system-info {
-        font-size: 18px;
-    }
-
-    .subpage-top-bar {
-        height: 40px;
-        padding: 0 12px 0 14px;
-    }
-
-    .subpage-top-bar .page-title {
-        font-size: 14px;
-    }
-
-    .subpage-top-bar .back-btn {
-        padding: 4px 10px;
-        font-size: 11px;
-    }
-
-    .subpage-top-bar .system-info {
-        font-size: 12px;
+    :root {
+        --top-bar-height: 68px;
+        --top-bar-padding-x: 20px;
+        --top-bar-logo-height: 40px;
+        --top-bar-system-info-size: 18px;
+        --top-bar-page-title-size: 20px;
     }
 }
 
