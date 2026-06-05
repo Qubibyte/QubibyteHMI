@@ -223,11 +223,11 @@ html {
 :root[data-theme="light"],
 :root[data-theme="midnight"],
 :root[data-theme="quantum"] {
-    --top-bar-height: 80px;
-    --top-bar-padding-x: 32px;
-    --top-bar-logo-height: 48px;
-    --top-bar-system-info-size: 22px;
-    --top-bar-page-title-size: 24px;
+    --top-bar-height: 72px;
+    --top-bar-padding-x: 28px;
+    --top-bar-logo-height: 44px;
+    --top-bar-system-info-size: 20px;
+    --top-bar-page-title-size: 22px;
 }
 
 /* ============================================
@@ -711,9 +711,9 @@ body {
 
 .subpage-top-bar .back-btn {
     flex-shrink: 0;
-    font-size: 18px;
+    font-size: 17px;
     line-height: 1.2;
-    padding: 12px 20px;
+    padding: 10px 18px;
 }
 
 .system-info {
@@ -3305,11 +3305,11 @@ input:checked+.toggle-slider::before {
     }
 
     :root {
-        --top-bar-height: 68px;
-        --top-bar-padding-x: 20px;
-        --top-bar-logo-height: 40px;
-        --top-bar-system-info-size: 18px;
-        --top-bar-page-title-size: 20px;
+        --top-bar-height: 62px;
+        --top-bar-padding-x: 18px;
+        --top-bar-logo-height: 36px;
+        --top-bar-system-info-size: 17px;
+        --top-bar-page-title-size: 18px;
     }
 }
 
